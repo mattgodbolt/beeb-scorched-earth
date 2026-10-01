@@ -126,11 +126,13 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
 .title_end
 
 \ The OS still thinks the screen starts at &3000, so its text row r lands
-\ on our row r-2. Big letters, one colour each.
+\ on our row r - (32 - SCREEN_ROWS). Big letters, one colour each, on our
+\ character row 1.
 .draw_title
 {
     LDA #31 : JSR oswrch
-    LDA #3 : JSR oswrch : JSR oswrch
+    LDA #3 : JSR oswrch
+    LDA #1 + 32 - SCREEN_ROWS : JSR oswrch
     LDX #0
 .loop
     TXA : AND #7 : CMP #6 : BCC @+ : SBC #5 : .@
@@ -144,6 +146,9 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
     LDA #7 : LDX #37 : JSR at
     JSR print_inline : EQUS "AFTER WENDELL HICKEN 1991", 0
+    LDA #C_BLUE : LDX #C_BLACK : JSR set_colours
+    LDA #0 : LDX #0 : JSR at
+    JSR print_inline : EQUS build_stamp, 0
     RTS
 }
 

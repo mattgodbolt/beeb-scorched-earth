@@ -2,7 +2,8 @@
 \ The game: rounds, turns, aiming, firing.
 \ ***************************************************************************
 
-ZA_AUTO1 num_players
+ZA_AUTO1 num_players, turns
+MAX_TURNS = 50
 ZA_AUTO1 wind               ; signed, -MAX_WIND..MAX_WIND (shown as x10)
 MAX_WIND = 20
 
@@ -41,6 +42,7 @@ MAX_WIND = 20
 .round
     INC round_no
     JSR new_round
+    LDA #0 : STA turns
     \ Who goes first rotates round by round.
     LDA round_no
 .first
@@ -59,9 +61,15 @@ MAX_WIND = 20
 .shoot
     JSR fire
     JSR count_alive : CMP #2 : BCC round_over
+    \ Computers can stalemate - a tank behind a cliff in a headwind - so
+    \ a round that drags on is called a draw.
+    INC turns : LDA turns : CMP #MAX_TURNS : BCS stalemate
 .next
     INC cur : LDA cur : CMP num_players : BNE turn
     LDA #0 : STA cur : JMP turn
+.stalemate
+    LDA #80 : JSR wait_frames
+    LDX #&FF : BNE decided
 .round_over
     \ The last tank standing scores and is paid; then the scores.
     LDA #80 : JSR wait_frames
@@ -70,6 +78,7 @@ MAX_WIND = 20
 .find
     LDA tank_alive,Y : BEQ @+ : TYA : TAX : .@
     INY : CPY num_players : BNE find
+.decided
     TXA : PHA : BMI nowin
     INC tank_score,X
     LDA #20 : JSR five_hundreds
@@ -171,7 +180,7 @@ MAX_WIND = 20
     SEC : SBC #1 : STA tank_y,X
     LDA #1 : STA tank_alive,X
     LDA #100 : STA tank_health,X
-    LDA #0 : STA tank_shield,X
+    LDA #0 : STA tank_shield,X : STA tank_tries,X
     \ aim at the middle of the screen, half power
     LDA #HI(500) : STA tank_power_hi,X
     LDA #LO(500) : STA tank_power_lo,X
@@ -226,7 +235,7 @@ MAX_WIND = 20
     JSR draw_weapon
 .release
     JSR wait_vsync
-    LDA #121 : LDX #0 : JSR osbyte              ; any key still down?
+    LDA #122 : JSR osbyte                       ; any key still down?
     CPX #&FF : BNE release
     JMP frame
 .battery
@@ -285,8 +294,9 @@ MAX_WIND = 20
     LDA #1 : STA step
     LDX #K_SHIFT : JSR key_down : BNE done
     LDA #2 : STA step
-    INC aim.held
-    LDA aim.held : CMP #25 : BCC done
+    LDA aim.held : CMP #25 : BCS fast           ; (saturates: no wrapping)
+    INC aim.held : BCC done
+.fast
     LDA #10 : STA step
 .done
     RTS
@@ -385,6 +395,7 @@ MAX_WIND = 20
     ZA_AUTO1 shooter
     LDA cur : STA shooter
     LDA expl_r : JSR snd_explode
+    LDA #0 : STA shields_broke
     JSR blast
     JSR damage_tanks
     LDA expl_r : STA disc_r
@@ -392,6 +403,11 @@ MAX_WIND = 20
     JSR carve
     JSR draw_tanks
     JSR run_falls
+    \ Take away the domes of shields that just failed.
+    LDA #0 : STA cur
+.domes
+    LSR shields_broke : BCC @+ : JSR erase_tank : .@
+    INC cur : LDA cur : CMP #MAXP : BNE domes
     JSR draw_tanks
     JSR drop_tanks
     LDA shooter : STA cur

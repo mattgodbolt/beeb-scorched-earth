@@ -19,10 +19,12 @@ NTYPES  = 6
 
 \ Power wobble by type, and the angles each one tries (degrees above the
 \ horizontal, towards the target).
+\ The 80 degree lob is what gets a shell over a mountain in the way:
+\ without it two Spoilers either side of one could stalemate for ever.
 .ai_wobble  EQUB 0, 0, 40, 120, 20, 8
 .ai_first   EQUB 0, 0, 0, 1, 2, 2       ; index into ai_angles
-.ai_count   EQUB 0, 0, 1, 1, 3, 3
-.ai_angles  EQUB 70, 50, 45, 65, 30
+.ai_count   EQUB 0, 0, 1, 1, 4, 4
+.ai_angles  EQUB 70, 50, 45, 65, 80, 30
 
 ZA_AUTO1 ai_target, ai_dist, ai_dir, ai_err
 ZA_AUTO2 ai_power
@@ -34,6 +36,19 @@ ZA_AUTO2 ai_power
     ZA_AUTO1 type, n, k, best_err, best_angle
     ZA_AUTO2 best_power
     LDX cur : LDA tank_type,X : STA type
+    \ Raise a shield if it has one, and use batteries when weak.
+    LDA tank_shield,X : BNE shielded
+    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ shielded
+    DEC inv,X
+    LDX cur : LDA #SHIELD_STRENGTH : STA tank_shield,X
+    JSR draw_tank
+.shielded
+    LDX cur : LDA tank_health,X : CMP #70 : BCS charged
+    LDA #I_BATTERY : JSR inv_index : LDA inv,X : BEQ charged
+    DEC inv,X
+    LDX cur : LDA tank_health,X : ADC #10 : STA tank_health,X   ; (carry clear)
+    JMP shielded
+.charged
     JSR choose_weapon
     JSR pick_target
     LDA type : CMP #MORON : BNE aimed_type
@@ -55,7 +70,8 @@ ZA_AUTO2 ai_power
     BIT ai_dir : BPL @+ : EOR #&FF : SEC : ADC #180 : .@  ; mirror for left
     LDX cur : STA tank_angle,X
     JSR search_power
-    LDA ai_err : CMP best_err : BCS worse
+    LDA ai_err : CMP best_err : BEQ better : BCS worse
+.better
     STA best_err
     LDX cur : LDA tank_angle,X : STA best_angle
     LDA ai_power : STA best_power : LDA ai_power+1 : STA best_power+1
@@ -66,6 +82,7 @@ ZA_AUTO2 ai_power
     LDX type : LDA ai_wobble,X : STA k
     CPX #TOSSER : BNE wobble
     LDX cur : LDY tank_tries,X : INC tank_tries,X
+    CPY #4 : BCC halve : LDY #4                 ; (it never gets perfect)
 .halve
     DEY : BMI wobble
     LSR k : JMP halve

@@ -145,8 +145,7 @@ ZA_AUTO1 rect_x0, rect_x1
     ZA_AUTO1 c, cend
     LDA rect_x1 : CMP #SCREEN_W : BCC @+ : LDA #SCREEN_W-1 : .@
     LSR A : STA cend
-    LDA rect_x0 : BPL @+ : LDA #0 : .@          ; (callers pass x0 >= -128)
-    LSR A : STA c
+    LDA rect_x0 : LSR A : STA c                 ; (callers clip x0 at 0)
 .loop
     LDX c : JSR draw_bgcol
     LDA c : CMP cend : BEQ done

@@ -13,7 +13,7 @@
 SUBSTEPS   = 8
 GRAVITY    = 51             ; rows/substep^2, in 1/65536ths
 POWER_MUL  = 43             ; launch speed per point of power, 1/65536 row/substep
-MAX_FRAMES = 1000           ; give up on a shot after 20 seconds
+MAX_FRAMES = &300           ; test shots give up after ~15s (high byte only)
 
 \ Wall types
 WALL_NONE     = 0           ; shots leave the screen and are lost

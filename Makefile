@@ -9,6 +9,8 @@ BARON   ?= $(firstword $(wildcard ../baron/build/src/baron) baron)
 TARGET   = build/scorch.ssd
 SYMBOLS  = build/symbols.json
 SOURCES  = $(wildcard src/*.6502)
+# Stamped into !BOOT and the title screen, so a disc says what it is.
+BUILD   := $(shell date -u +%Y-%m-%d.%H%M)-$(shell git rev-parse --short HEAD 2>/dev/null | tr a-f A-F || echo NOGIT)$(shell git diff --quiet HEAD 2>/dev/null || echo +)
 
 .PHONY: all run test ship clean
 
@@ -16,7 +18,7 @@ all: $(TARGET)
 
 # The symbol dump is how the test tools find the game's variables.
 $(TARGET): $(SOURCES) | build
-	$(BARON) -o $(TARGET) --title SCORCHED --opt 3 --symbols $(SYMBOLS) -v -log0 build/listing.txt src/main.6502
+	$(BARON) -D 'BUILD="$(BUILD)"' -o $(TARGET) --title SCORCHED --opt 3 --symbols $(SYMBOLS) -v -log0 build/listing.txt src/main.6502
 	@grep -E '^code' build/listing.txt || true
 
 build:

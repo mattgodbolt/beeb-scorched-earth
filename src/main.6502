@@ -12,7 +12,15 @@ INCLUDE "memory.6502"
 \ reaches past &3000 once it is copied down, so a MODE change after that
 \ would wipe the top of it. The palette is blacked out so the game file
 \ passing through screen memory on its way in is not seen.
+\ The build stamp comes from the Makefile (-D BUILD="date-sha").
+IF DEFINED(BUILD)
+    build_stamp = BUILD
+ELSE
+    build_stamp = "DEV"
+ENDIF
+
 SECTION Boot, filename = "!BOOT", exec = &FFFFFFFF
+    EQUS "*| SCORCHED EARTH ", build_stamp, 13
     EQUS "MODE 2", 13
     EQUS "FOR I%=0 TO 15:VDU 19,I%,0;0;:NEXT", 13
     EQUS "*RUN SCORCH", 13

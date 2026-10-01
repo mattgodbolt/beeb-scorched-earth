@@ -57,7 +57,7 @@ Never assume a change worked: `make`, run it, look.
 - `!BOOT` selects MODE 2 *before* loading: the code reaches past `&3000`,
   so a MODE change afterwards wipes the top of it (it did, once).
 - The OS still thinks the screen starts at `&3000`, so OS text row `r`
-  appears on our row `r-2`. Only the title uses OS text.
+  appears on our row `r - (32 - SCREEN_ROWS)`. Only the title uses OS text.
 
 ## Baron gotchas met so far
 

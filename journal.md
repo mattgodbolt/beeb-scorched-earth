@@ -123,3 +123,45 @@ What worked, what I discovered, what went wrong — kept as I go.
   gallery script (save_state once, restore it per weapon, poke the
   weapon and aim, fire) are the regression checks. save_state/restore
   makes per-weapon tests take seconds instead of a fresh boot each.
+
+## Review findings
+
+A review agent read the whole source and confirmed two bugs in the
+emulator that no test of mine had shown:
+
+- **A breaking shield cost no health and scribbled on the terrain.**
+  `hurt` called `erase_tank` to take the dome away, which returns with X
+  holding a column number, and then indexed `tank_health` with it. Worse,
+  even with X fixed, repainting there (before `carve` has updated the
+  model) puts back dirt the blast had just cleared. Now a bitmask records
+  failed shields and `explosion` erases their domes after the dirt has
+  settled.
+- **`repaint` treated x >= 128 as negative**, a leftover from when callers
+  passed signed values. Every tank right of x=134 that fell repainted its
+  whole row band from column 0, wiping the other tanks out of the picture
+  until the next explosion.
+
+And likely ones, also fixed: warheads that land after a tank has died
+(MIRV, Death's Head) kept paying for damage to the corpse; overkill paid
+for damage the tank didn't have; the computers bought batteries and
+shields they had no way to use; a Tosser's aim became perfect for the
+rest of the game after seven shots; held keys' acceleration wrapped round
+after five seconds; the "any key down?" scan used OSBYTE 121 with X=0,
+which counts SHIFT and CTRL on a real machine (OSBYTE 122 doesn't).
+
+## Stalemates
+
+`make test` stalled once: a tank on 1 health (so max power 10) behind a
+cliff, a 190 headwind, and two Spoilers whose 30/45/65 degree shots all
+hit the cliff, for ever. Two fixes: the better computers also try an 80
+degree lob, and a round still going after 50 turns is a draw. The
+original has no such limit, but it never had four computers grinding
+away unattended either.
+
+## Build stamp
+
+The Makefile passes `-D BUILD="2026-10-01.2302-6C834F4"` (UTC date, short
+SHA, `+` if the tree was dirty) to baron. It goes into `!BOOT` as a
+`*|` comment and onto the title screen in blue. The SHA is upper-cased
+because the game's font has no lower case. Ship discs from a clean tree:
+commit the source, `make ship`, commit the disc.

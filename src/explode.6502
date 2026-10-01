@@ -353,6 +353,7 @@ ZA_AUTO1 blast_power        ; damage at the very centre
 .tank
     STX cur
     LDA tank_alive,X : BNE @+ : JMP next : .@
+    LDA tank_health,X : BNE @+ : JMP next : .@  ; dead already, just not gone
     \ dx in rows = 2 * |tank_x - cx|
     LDA tank_x,X : SEC : SBC disc_cx
     BCS @+ : EOR #&FF : ADC #1 : .@
@@ -412,11 +413,13 @@ ZA_AUTO1 blast_power        ; damage at the very centre
 .broke
     EOR #&FF : ADC #1 : STA dmg                 ; what got through
     LDA #0 : STA tank_shield,X
-    JSR erase_tank                              ; (the shield goes)
+    \ The dome comes off the screen once the dirt has settled (explosion):
+    \ repainting it now would put back dirt the blast has just removed.
+    LDA shields_broke : ORA bit,X : STA shields_broke
 .unshielded
-    LDA tank_health,X : SEC : SBC dmg
-    BCS @+ : LDA #0 : .@
-    STA tank_health,X
+    \ Only the health actually lost counts, so overkill pays no extra.
+    LDA tank_health,X : CMP dmg : BCS @+ : STA dmg : .@
+    LDA tank_health,X : SEC : SBC dmg : STA tank_health,X
     \ Damage pays the attacker - unless it was their own tank.
     LDA dmg : JSR damage_pay
     LDX attacker : CPX cur : BEQ own
@@ -424,7 +427,8 @@ ZA_AUTO1 blast_power        ; damage at the very centre
 .own
     JMP money_pay
 }
-ZA_AUTO1 attacker
+ZA_AUTO1 attacker, shields_broke
+.bit EQUB 1, 2, 4, 8, 16, 32
 
 \ Square of sq_in (0-127) -> square.out (16 bits).
 ZA_AUTO1 sq_in
