@@ -13,23 +13,22 @@ FILL_DIRT  = 2
 \ The glow: logical colours 8-15 cycle through hot physical colours.
 
 ZA_AUTO1 glow_phase
+\ Stored EOR 7, the way the ULA's palette register wants them.
 .hot_colours
-    EQUB C_WHITE, C_YELLOW, C_YELLOW, C_RED, C_RED, C_YELLOW, C_RED, C_MAGENTA
+    EQUB C_WHITE EOR 7, C_YELLOW EOR 7, C_YELLOW EOR 7, C_RED EOR 7
+    EQUB C_RED EOR 7, C_YELLOW EOR 7, C_RED EOR 7, C_MAGENTA EOR 7
 
 \ Advance the glow one step.
 .glow
 {
-    ZA_AUTO1 i
     INC glow_phase
-    LDA #0 : STA i
+    LDY #C_HOT << 4                             ; logical colour, top nibble
 .loop
-    LDA i : CLC : ADC glow_phase : AND #7 : TAX
-    LDA hot_colours,X : EOR #7 : STA t
-    LDA i : ORA #C_HOT : ASL A : ASL A : ASL A : ASL A
-    ORA t : STA ula_pal
-    INC i : LDA i : CMP #8 : BNE loop
+    TYA : LSR A : LSR A : LSR A : LSR A
+    CLC : ADC glow_phase : AND #7 : TAX
+    TYA : ORA hot_colours,X : STA ula_pal
+    TYA : CLC : ADC #&10 : TAY : BCC loop
     RTS
-.t EQUB 0
 }
 
 \ Put logical colours 8-15 back to black.
@@ -69,10 +68,10 @@ ZA_AUTO1 span_l, span_r
 .lok
     STA span_x0
     LDA fill_mode : BEQ solid
-    CMP #FILL_SKY : BEQ sky
-    LDA dirtrow,Y : JMP go
+    CMP #FILL_SKY : BEQ sky                     ; (carry set either way)
+    LDA dirtrow,Y : BCS go
 .sky
-    LDA skyrow,Y : JMP go
+    LDA skyrow,Y : BCS go
 .solid
     LDA fill_byte
 .go
@@ -82,9 +81,10 @@ ZA_AUTO1 span_l, span_r
     RTS
 }
 
-\ For dy = 0..disc_r, call the row routine at (row_fn) with Y = each
-\ on-screen row of the disc (two rows per dy, one for dy = 0) and X = dy.
-\ Rows are clipped to TOP..FLOOR-1.
+\ For dy = 0..disc_r, call the row routine with Y = each on-screen row of
+\ the disc (two rows per dy, one for dy = 0) and X = dy. Rows are clipped
+\ to TOP..FLOOR-1. Only the blast fills solid, and it draws ring by ring
+\ (ring_row); sky and dirt fill whole discs (full_row).
 ZA_AUTO1 row_dy
 .disc_rows
 {
@@ -100,14 +100,12 @@ ZA_AUTO1 row_dy
     TAY : LDX row_dy : JSR do_row
 .next
     LDA row_dy : CMP disc_r : BEQ done
-    INC row_dy : JMP loop
+    INC row_dy : BNE loop                       ; (always: dy <= MAX_R)
 .done
     RTS
 .do_row
-    JMP (row_fn)
-    ZA_CANJUMP full_row, ring_row
+    LDA fill_mode : BEQ ring_row
 }
-.row_fn EQUW 0
 
 \ A whole row of the disc.
 .full_row
@@ -140,8 +138,6 @@ ZA_AUTO1 row_dy
 .fill_disc
 {
     JSR make_profile
-    LDA #LO(full_row) : STA row_fn
-    LDA #HI(full_row) : STA row_fn+1
     JMP disc_rows
 }
 
@@ -154,8 +150,6 @@ ZA_AUTO1 row_dy
 {
     ZA_AUTO1 k
     JSR glow
-    LDA #LO(ring_row) : STA row_fn
-    LDA #HI(ring_row) : STA row_fn+1
     LDA #FILL_SOLID : STA fill_mode
     LDA #0 : STA profile                        ; (the radius-0 disc)
     LDA #1 : STA k
@@ -195,8 +189,9 @@ ZA_AUTO1 row_dy
 
 ZA_AUTO1 fall_n             ; columns in the fall queue
 
-\ For each column of the disc, call (col_fn) with X = screen column and
-\ hole_top..hole_bot = the disc's rows there (clipped to TOP..FLOOR-1).
+\ For each column of the disc, call the column routine with X = screen
+\ column and hole_top..hole_bot = the disc's rows there (clipped to
+\ TOP..FLOOR-1): dirt_col when adding dirt, else carve_col.
 ZA_AUTO1 hole_top, hole_bot, col_x
 .disc_cols
 {
@@ -227,24 +222,9 @@ ZA_AUTO1 hole_top, hole_bot, col_x
     INC dx
     DEC n : BNE loop
     RTS
-.do_col
-    JMP (col_fn)
-    ZA_CANJUMP carve_col, dirt_col
 .t EQUB 0
-}
-.col_fn EQUW 0
-
-\ Queue a block of dirt to fall: column col_x, rows A..fall_b, by fall_d.
-ZA_AUTO1 fall_b, fall_d
-.queue_fall
-{
-    LDY fall_n
-    STA fall_top,Y
-    LDA col_x : STA fall_x,Y
-    LDA fall_b : STA fall_bot,Y
-    LDA fall_d : STA fall_dist,Y
-    INC fall_n
-    RTS
+.do_col
+    LDA fill_mode : CMP #FILL_DIRT : BEQ dirt_col
 }
 
 \ Blow a hole: the dirt in hole_top..hole_bot goes, and whatever was above
@@ -260,7 +240,7 @@ ZA_AUTO1 fall_b, fall_d
 .floating
     \ dirt from ground..hole_top-1 falls by hole_bot-hole_top+1
     LDA hole_top : SEC : SBC #1 : STA fall_b
-    LDA hole_bot : SEC : SBC hole_top : CLC : ADC #1 : STA fall_d
+    LDA hole_bot : SEC : SBC fall_b : STA fall_d
     CLC : ADC ground,X : STA ground,X
     SEC : SBC fall_d                            ; (old ground, for the queue)
     JMP queue_fall
@@ -276,7 +256,7 @@ ZA_AUTO1 fall_b, fall_d
     CMP hole_bot : BCC @+ : LDA hole_bot : .@
     STA fall_b
     \ it falls ground - 1 - fall_b ...
-    LDA ground,X : SEC : SBC #1 : SEC : SBC fall_b : STA fall_d
+    LDA ground,X : CLC : SBC fall_b : STA fall_d
     \ ... and the ground rises by its height
     LDA fall_b : SEC : SBC hole_top : STA t     ; height - 1
     LDA ground,X : CLC : SBC t                  ; ground - height
@@ -289,12 +269,24 @@ ZA_AUTO1 fall_b, fall_d
 .t EQUB 0
 }
 
+\ Queue a block of dirt to fall: column col_x, rows A..fall_b, by fall_d.
+ZA_AUTO1 fall_b, fall_d
+.queue_fall
+{
+    LDY fall_n
+    STA fall_top,Y
+    LDA col_x : STA fall_x,Y
+    LDA fall_b : STA fall_bot,Y
+    LDA fall_d : STA fall_dist,Y
+    INC fall_n
+    RTS
+}
+
 \ Carve the crater of the disc (disc_cx, disc_cy, disc_r) into the model.
 .carve
 {
+    LDA #FILL_SKY : STA fill_mode               ; (sky is what is left)
     JSR make_profile
-    LDA #LO(carve_col) : STA col_fn
-    LDA #HI(carve_col) : STA col_fn+1
     JMP disc_cols
 }
 
@@ -303,8 +295,6 @@ ZA_AUTO1 fall_b, fall_d
 {
     LDA #FILL_DIRT : STA fill_mode
     JSR fill_disc
-    LDA #LO(dirt_col) : STA col_fn
-    LDA #HI(dirt_col) : STA col_fn+1
     JMP disc_cols
 }
 
