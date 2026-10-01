@@ -50,13 +50,13 @@ ZA_AUTO1 terrain_amp
     LDA ground,X : CLC : ADC sum : ROR A : STA mid
     JSR rand : AND amp : STA sum
     LDA amp : LSR A : EOR #&FF : SEC : ADC sum  ; bump in -amp/2 .. +amp/2
+    \ No sum can wrap: mid is 64-221 (anchors reach MIN_GROUND+30+127)
+    \ and the bump at most 32 either way.
     BMI down
-    CLC : ADC mid : BCS low : CMP #MAX_GROUND : BCC store
-.low
+    CLC : ADC mid : CMP #MAX_GROUND : BCC store
     LDA #MAX_GROUND : BNE store
 .down
-    CLC : ADC mid : BCC high : CMP #MIN_GROUND : BCS store
-.high
+    CLC : ADC mid : CMP #MIN_GROUND : BCS store
     LDA #MIN_GROUND
 .store
     LDX i : STA ground,X
@@ -64,7 +64,7 @@ ZA_AUTO1 terrain_amp
     CMP #SCREEN_W+1 : BCC point
     LSR amp
     LSR step
-    LDA step : CMP #1 : BNE level
+    LDA step : LSR A : BNE level                ; until step is 1
     RTS
 }
 
@@ -75,7 +75,7 @@ ZA_AUTO1 terrain_amp
 \ repainted from the model.
 .make_colours
 {
-    ZA_AUTO1 shaded, stripe
+    ZA_AUTO1 shaded, stripe, t
     JSR rand : AND #3 : TAX : LDA stripes,X : STA stripe
     JSR rand : AND #1 : STA shaded
     LDX #0
@@ -94,7 +94,6 @@ ZA_AUTO1 terrain_amp
     STA dirtrow,X
     INX : BNE row
     RTS
-.t EQUB 0
 .stripes
     EQUB cbyte(C_YELLOW), cbyte(C_CYAN), cbyte(C_WHITE), cbyte(C_BLUE)
 .sky_dither
