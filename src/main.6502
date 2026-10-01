@@ -60,6 +60,8 @@ SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filena
     INCLUDE "boot.6502"
     ENDSECTION
 
+    INCLUDE "lowdata.6502"
+
 \ Runs in screen memory, after the payload. Nothing in here may be needed
 \ afterwards.
 .loader

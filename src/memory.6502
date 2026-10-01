@@ -58,4 +58,12 @@ SECTION Nmi, org = &0D01, guard = &0E00
 .sh_oldx        SKIP MAXSH
 .sh_oldy        SKIP MAXSH
 .sh_active      SKIP MAXSH
+.nmi_end
 ENDSECTION
+
+\ Three more holes are filled with constant tables, carried in the SCORCH
+\ file and copied into place once at start-up (lowdata.6502, boot.6502):
+\   &0380-&03DF  the cassette filing system's workspace; no tape is ever used
+\   tables_end-&0CFF  the rest of the user-defined characters
+\   nmi_end-&0DEF  the rest of the extended vectors, which only ROMs use;
+\                  &0DF0-&0DFF is the ROMs' workspace table and stays put

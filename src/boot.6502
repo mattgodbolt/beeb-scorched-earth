@@ -11,6 +11,20 @@
 .boot
 {
     ZA_ENTRY
+    \ The constant tables that live below &0E00 (lowdata.6502). First,
+    \ because they are carried in screen memory and init_system clears it.
+    LDX #low_tape_end - sintab
+.tape
+    LDA low_tape_payload-1,X : STA sintab-1,X
+    DEX : BNE tape
+    LDX #low_udg_end - item_kind
+.udg
+    LDA low_udg_payload-1,X : STA item_kind-1,X
+    DEX : BNE udg
+    LDX #low_nmi_end - item_price_lo
+.nmi
+    LDA low_nmi_payload-1,X : STA item_price_lo-1,X
+    DEX : BNE nmi
     JSR init_system
     JSR init_tables
     JSR snd_init

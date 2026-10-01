@@ -50,20 +50,11 @@ I_BATTERY   = NWEAPONS + 1
 I_SHIELD    = NWEAPONS + 2
 SHIELD_STRENGTH = 60
 
-.item_kind      EQUB ITEMS[.., 1]
-.item_radius    EQUB ITEMS[.., 2]
-.item_power     EQUB ITEMS[.., 3]
-.item_price_lo  EQUB LO(ITEMS[.., 4])
-.item_price_hi  EQUB HI(ITEMS[.., 4])
-.item_bundle    EQUB ITEMS[.., 5]
 .item_split     EQUB ITEMS[.., 6]
 .item_names
 FOR i = 0..NITEMS-1
     EQUS ITEMS[i][0], 0
 NEXT
-
-\ Inventory: inv[inv_base[player] + item].
-.inv_base       EQUB (0..MAXP-1) * NITEMS
 
 \ Print item A's name.
 .print_item_name
