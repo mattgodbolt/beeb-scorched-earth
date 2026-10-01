@@ -49,6 +49,14 @@ I_PARACHUTE = NWEAPONS
 I_BATTERY   = NWEAPONS + 1
 I_SHIELD    = NWEAPONS + 2
 SHIELD_STRENGTH = 60
+\ Only these two split, so `split` picks between them rather than keep a
+\ table of split counts that is nearly all zeros.
+I_MIRV        = 6
+I_DEATHS_HEAD = 7
+ASSERT ITEMS[I_MIRV][1] = SK_MIRV AND ITEMS[I_DEATHS_HEAD][1] = SK_MIRV
+FOR i = 0..NITEMS-1
+    ASSERT ITEMS[i][6] = 0 OR i = I_MIRV OR i = I_DEATHS_HEAD
+NEXT
 
 .item_kind      EQUB ITEMS[.., 1]
 .item_radius    EQUB ITEMS[.., 2]
@@ -56,7 +64,6 @@ SHIELD_STRENGTH = 60
 .item_price_lo  EQUB LO(ITEMS[.., 4])
 .item_price_hi  EQUB HI(ITEMS[.., 4])
 .item_bundle    EQUB ITEMS[.., 5]
-.item_split     EQUB ITEMS[.., 6]
 .item_names
 FOR i = 0..NITEMS-1
     EQUS ITEMS[i][0], 0
@@ -86,7 +93,7 @@ NEXT
     LDA (ptr),Y
     INC ptr : BNE @+ : INC ptr+1 : .@
     CMP #0 : BNE find
-    JMP skip
+    BEQ skip
 .found
     LDA ptr : LDX ptr+1
     RTS
@@ -106,8 +113,9 @@ NEXT
     ZA_AUTO1 w
     LDX cur : LDA tank_weapon,X : STA w
 .try
+    \ (w is never 0 after the INC, so Z is only set by wrapping round.)
     INC w : LDA w : CMP #NWEAPONS : BCC @+ : LDA #0 : STA w : .@
-    LDA w : BEQ found
+    BEQ found
     JSR inv_index : LDA inv,X : BEQ try
 .found
     LDX cur : LDA w : STA tank_weapon,X
@@ -222,10 +230,10 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     LDA shells+7,Y : BNE next                   ; y off screen
     LDA shells+2,Y : CMP #SCREEN_W : BCS next
     LDA shells+6,Y : CMP #TOP : BCC next
-    LDX i : STA sh_oldy,X
-    LDA shells+2,Y : STA sh_oldx,X
+    LDX i : STA sh_oldy,X : PHA
     LDA #1 : STA sh_drawn,X
-    LDY sh_oldy,X : LDA sh_oldx,X : TAX
+    LDA shells+2,Y : STA sh_oldx,X
+    TAX : PLA : TAY
     LDA shot_colour : JSR plot
 .next
     INC i : LDA i : CMP #MAXSH : BNE loop
@@ -243,29 +251,28 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     RTS
 }
 
-\ The MIRV in the zero page block becomes item_split warheads, fanned out
-\ sideways around its own velocity.
+\ The MIRV in the zero page block becomes the split count (ITEMS) of
+\ warheads, fanned out sideways around its own velocity.
 .split
 {
     ZA_AUTO1 n, k
-    LDX weapon : LDA item_split,X : STA n
+    LDA #ITEMS[I_MIRV][6]
+    LDX weapon : CPX #I_DEATHS_HEAD : BNE @+
+    LDA #ITEMS[I_DEATHS_HEAD][6]
+.@  STA n
     LDA #SK_MISSILE : STA shot_kind
     \ start the fan at vx - (n-1)/2 * spread
     LDA n : SEC : SBC #1 : LSR A : STA k
 .back
     LDA k : BEQ go
-    LDA shot_vx : SEC : SBC #LO(SPREAD) : STA shot_vx
-    LDA shot_vx+1 : SBC #HI(SPREAD) : STA shot_vx+1
-    LDA shot_vx+2 : SBC #0 : STA shot_vx+2
+    LDA #LO(-SPREAD) : LDX #HI(-SPREAD) : JSR add_vx
     DEC k : JMP back
 .go
     \ the first warhead replaces the MIRV itself
     JSR save_shell
 .more
     DEC n : BEQ done
-    LDA shot_vx : CLC : ADC #LO(SPREAD) : STA shot_vx
-    LDA shot_vx+1 : ADC #HI(SPREAD) : STA shot_vx+1
-    LDA shot_vx+2 : ADC #0 : STA shot_vx+2
+    LDA #LO(SPREAD) : LDX #HI(SPREAD) : JSR add_vx
     JSR spawn_shell
     JMP more
 .done
@@ -276,10 +283,21 @@ SPREAD = 2200
 \ ---------------------------------------------------------------------------
 \ Landing.
 
+\ A ball of dirt lands at (disc_cx, disc_cy), radius expl_r.
+.dirt_ball
+{
+    LDA expl_r : STA disc_r
+    LDA #0 : STA fall_n
+    JSR add_dirt
+    JSR run_falls
+    JMP draw_tanks
+}
+
 \ The shell in the zero page block has landed (hit_kind, hit_x, hit_y).
+\ A Riot Bomb is an explosion like any other: its blast power is 0.
 .land
 {
-    LDA hit_kind : CMP #HIT_LOST : BNE @+ : RTS : .@
+    LDA hit_kind : CMP #HIT_LOST : BEQ none
     LDA hit_x : STA disc_cx
     LDA hit_y : STA disc_cy
     LDX weapon
@@ -287,8 +305,7 @@ SPREAD = 2200
     LDA item_power,X : STA blast_power
     LDA shot_kind : AND #15
     CMP #SK_TRACER : BEQ none
-    CMP #SK_DIRT : BEQ dirt
-    CMP #SK_RIOT : BEQ riot
+    CMP #SK_DIRT : BEQ dirt_ball
     CMP #SK_ROLLER : BEQ roller
     CMP #SK_FUNKY : BEQ funky
     CMP #SK_BOMBLET : BEQ bomblet
@@ -296,11 +313,6 @@ SPREAD = 2200
     JMP explosion
 .none
     RTS
-.dirt
-    JMP dirt_ball
-.riot
-    LDA #0 : STA blast_power
-    JMP explosion
 .roller
     LDA hit_kind : CMP #HIT_TANK : BEQ @+ : JSR roll : .@
     JMP explosion
@@ -316,10 +328,8 @@ SPREAD = 2200
     LDA shot_kind : AND #3*HOP : BEQ none
     SEC : SBC #HOP : ORA #SK_LEAP : STA shot_kind
     \ bounce: up at half the speed it came down, a bit slower sideways
-    LDA #0 : SEC : SBC shot_vy : STA shot_vy
-    LDA #0 : SBC shot_vy+1 : STA shot_vy+1
-    LDA #0 : SBC shot_vy+2 : STA shot_vy+2
-    LDA shot_vy+2 : CMP #&80 : ROR A : STA shot_vy+2
+    LDX #4 : JSR negate_vel                     ; (A = vy's top byte)
+    CMP #&80 : ROR A : STA shot_vy+2
     ROR shot_vy+1 : ROR shot_vy
     LDA hit_y : SEC : SBC #3 : STA shot_y+2
     LDA #0 : STA shot_y+3
@@ -335,16 +345,14 @@ SPREAD = 2200
 .more
     LDA #SK_BOMBLET : STA shot_kind
     LDA hit_x : STA shot_x+2
-    LDA #0 : STA shot_x+3 : STA shot_y+3
+    LDA #0 : STA shot_x+3 : STA shot_y+3 : STA shot_vx : STA shot_vy
     \ vx: random, +-0.25 px/substep; vy: up, 0.25-0.75 rows/substep
-    JSR rand : STA shot_vx+1
-    LDA #0 : STA shot_vx
-    LDA shot_vx+1 : CMP #&80 : ROR A : STA shot_vx+1     ; /2, keeping sign
-    LDA #0 : BIT shot_vx+1 : BPL @+ : LDA #&FF : .@
-    STA shot_vx+2
+    LDX #0
+    JSR rand : CMP #&80 : ROR A : STA shot_vx+1 ; /2, keeping sign
+    BPL @+ : DEX : .@
+    STX shot_vx+2
     JSR rand : AND #&7F : ORA #&40 : EOR #&FF : STA shot_vy+1
     LDA #&FF : STA shot_vy+2
-    LDA #0 : STA shot_vy
     JSR spawn_shell
     DEC n : BNE more
     RTS
@@ -375,18 +383,7 @@ SPREAD = 2200
     LDX x : LDY hit_y : JSR unplot
     JMP step
 .stop
-    LDA x : STA disc_cx
-    LDX x : LDA ground,X : SEC : SBC #1 : STA disc_cy
-    RTS
-}
-
-\ A ball of dirt lands at (disc_cx, disc_cy), radius expl_r.
-.dirt_ball
-{
-    LDA expl_r : STA disc_r
-    LDA #0 : STA fall_n
-    JSR add_dirt
-    JSR run_falls
-    JSR draw_tanks
+    LDX x : STX disc_cx
+    LDY ground,X : DEY : STY disc_cy
     RTS
 }
