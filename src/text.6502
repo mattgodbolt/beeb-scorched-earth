@@ -18,7 +18,12 @@ ENDMACRO
 ZA_AUTO1 text_x, text_y     ; pixel position of the next character (x even)
 
 \ Choose text colours: A = foreground, X = background (logical colours).
-\ Builds the four two-pixel patterns a glyph row is made of.
+\ Builds the four two-pixel patterns a glyph row is made of. Every caller
+\ so far wants black paper, hence the shorter entry points.
+.white
+    LDA #C_WHITE
+.ink
+    LDX #C_BLACK
 .set_colours
 {
     ZA_AUTO1 fg, bg

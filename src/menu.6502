@@ -140,13 +140,13 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA #17 : JSR oswrch : PLA : JSR oswrch     ; COLOUR 1-6
     LDA title_text,X : JSR oswrch
     INX : CPX #title_end - title_text : BNE loop
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #8 : LDX #4 : JSR at
     JSR print_inline : EQUS "THE MOTHER OF ALL GAMES", 0
-    LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
+    LDA #C_CYAN : JSR ink
     LDA #7 : LDX #37 : JSR at
     JSR print_inline : EQUS "AFTER WENDELL HICKEN 1991", 0
-    LDA #C_BLUE : LDX #C_BLACK : JSR set_colours
+    LDA #C_BLUE : JSR ink
     LDA #0 : LDX #0 : JSR at
     JSR print_inline : EQUS build_stamp, 0
     RTS
@@ -161,7 +161,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     JSR draw_title
     LDA #0 : STA menu_sel
 .redraw
-    LDA #C_YELLOW : LDX #C_BLACK : JSR set_colours
+    LDA #C_YELLOW : JSR ink
     LDA #7 : LDX #8 : JSR at
     JSR print_inline : EQUS "PLAYERS ", 0
     LDA num_players : LDX #2 : JSR print_byte
@@ -172,7 +172,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
 .player
     LDA i : ASL A : ADC #12 : TAX : LDA #7 : JSR at
     LDX i : CPX num_players : BCS blank
-    LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDA tank_colour,X : JSR ink
     LDX i : JSR print_name
     JSR print_inline : EQUS "  ", 0
     JMP pnext
@@ -181,7 +181,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
 .pnext
     INC i : LDA i : CMP #MAXP : BNE player
     \ the marker
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #0 : STA i
 .marker
     LDA i : JSR menu_line : LDA #5 : JSR at
@@ -256,11 +256,11 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     ZA_AUTO1 i
     JSR cls
     LDA #1 : STA menu_sel
-    LDX cur : LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDX cur : LDA tank_colour,X : JSR ink
     LDA #1 : LDX #1 : JSR at
     LDX cur : JSR print_name
     JSR print_inline : EQUS " GOES SHOPPING", 0
-    LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
+    LDA #C_CYAN : JSR ink
     LDA #1 : LDX #3 : JSR at
     JSR print_inline : EQUS "ITEM             QTY  PRICE OWNED", 0
     LDA #5 : LDX #26 : JSR at
@@ -270,7 +270,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA i : JSR shop_line
     INC i : LDA i : CMP #NITEMS : BNE all
 .money
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #31 : LDX #1 : JSR at
     LDX cur : JSR print_money
 .key
@@ -308,7 +308,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDX #C_WHITE : BCS colour
     LDX #C_BLUE
 .colour
-    TXA : LDX #C_BLACK : JSR set_colours
+    TXA : JSR ink
     LDA item : CLC : ADC #4 : TAX : LDA #1 : JSR at
     LDA item : JSR print_item_name
 .pad
@@ -388,7 +388,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     ZA_AUTO1 i, winner
     STA winner
     JSR cls
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #13 : LDX #3 : JSR at
     JSR print_inline : EQUS "ROUND ", 0
     LDA round_no : LDX #2 : JSR print_byte
@@ -396,19 +396,19 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA num_rounds : LDX #2 : JSR print_byte
     LDA #12 : LDX #6 : JSR at
     LDX winner : BMI nobody
-    LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDA tank_colour,X : JSR ink
     LDX winner : JSR print_name
     JSR print_inline : EQUS " WINS", 0
     JMP table
 .nobody
     JSR print_inline : EQUS "NOBODY WINS", 0
 .table
-    LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
+    LDA #C_CYAN : JSR ink
     LDA #6 : LDX #10 : JSR at
     JSR print_inline : EQUS "PLAYER       SCORE    MONEY", 0
     LDA #0 : STA i
 .row
-    LDX i : LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDX i : LDA tank_colour,X : JSR ink
     LDA i : ASL A : ADC #12 : TAX : LDA #6 : JSR at
     LDX i : JSR print_name
     LDA #4*20 : STA text_x
@@ -416,7 +416,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA #4*26 : STA text_x
     LDX i : JSR print_money
     INC i : LDA i : CMP num_players : BNE row
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #11 : LDX #28 : JSR at
     JSR print_inline : EQUS "SPACE TO GO ON", 0
 .wait
@@ -462,12 +462,12 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     INX : CPX num_players : BNE find
     JSR cls
     JSR draw_title
-    LDX best : LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDX best : LDA tank_colour,X : JSR ink
     LDA #9 : LDX #12 : JSR at
     LDX best : JSR print_name
     JSR print_inline : EQUS " IS CHAMPION", 0
     JSR snd_fanfare
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #10 : LDX #28 : JSR at
     JSR print_inline : EQUS "SPACE TO PLAY AGAIN", 0
 .wait

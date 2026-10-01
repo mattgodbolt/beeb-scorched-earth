@@ -35,6 +35,9 @@ ZA_AUTO2 ai_power
 {
     ZA_AUTO1 type, n, k, best_err, best_angle
     ZA_AUTO2 best_power
+    \ Say whose turn it is before the thinking starts: a Spoiler can spend
+    \ a couple of seconds on its test shots.
+    JSR draw_status
     LDX cur : LDA tank_type,X : STA type
     \ Raise a shield if it has one, and use batteries when weak.
     LDA tank_shield,X : BNE shielded

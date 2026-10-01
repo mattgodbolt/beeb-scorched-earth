@@ -463,7 +463,7 @@ MAX_WIND = 20
 
 .draw_status
 {
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #0 : STA text_x : LDA #2 : STA text_y
     JSR print_inline : EQUS "POWER", 0
     JSR draw_power
@@ -471,12 +471,12 @@ MAX_WIND = 20
     JSR print_inline : EQUS "ANGLE", 0
     JSR draw_angle
     \ name, in the tank's colour
-    LDX cur : LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDX cur : LDA tank_colour,X : JSR ink
     LDA #4*24 : STA text_x
     JSR print_inline : EQUS "PLAYER ", 0
     LDA cur : CLC : ADC #49 : JSR draw_char
     \ wind
-    LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
+    LDA #C_CYAN : JSR ink
     LDA #4*33 : STA text_x
     LDA wind : BEQ calm : BPL east
     JSR print_inline : EQUS "<", 0
@@ -489,14 +489,14 @@ MAX_WIND = 20
 .calm
     JSR print_inline : EQUS "CALM ", 0
 .line2
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     JSR draw_weapon
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #4*21 : STA text_x
     JSR print_inline : EQUS "HEALTH", 0
     LDX cur : LDA tank_health,X : LDX #4 : JSR print_byte
     \ the walls, in the original's colours
-    LDX wall_type : LDA wall_colours,X : LDX #C_BLACK : JSR set_colours
+    LDX wall_type : LDA wall_colours,X : JSR ink
     LDA #4*32 : STA text_x
     LDA wall_type
     LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_nth
@@ -510,7 +510,7 @@ MAX_WIND = 20
 
 .draw_power
 {
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #4*6 : STA text_x : LDA #2 : STA text_y
     LDX cur
     LDA tank_power_lo,X : STA num
@@ -527,7 +527,7 @@ MAX_WIND = 20
 \ The selected weapon and how many are left.
 .draw_weapon
 {
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #0 : STA text_x : LDA #9 : STA text_y
     LDX cur : LDA tank_weapon,X : JSR print_item_name
 .pad
@@ -544,7 +544,7 @@ MAX_WIND = 20
 \ arrow for the side it faces.
 .draw_angle
 {
-    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR white
     LDA #4*18 : STA text_x : LDA #2 : STA text_y
     LDX cur : LDA tank_angle,X
     CMP #91 : BCS left

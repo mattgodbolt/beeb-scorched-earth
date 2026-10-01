@@ -53,7 +53,7 @@ DEATH_LINES  = 10
     CMP #TOP : BCS @+ : LDA #TOP : .@
     STA text_y : STA bg_y0
     CLC : ADC #5 : STA bg_y1
-    LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDA tank_colour,X : JSR ink
     LDA str : LDX str+1 : JSR print_string
     LDA #75 : JSR wait_frames
     JSR repaint
