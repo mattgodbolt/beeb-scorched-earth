@@ -37,12 +37,14 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     RTS
 }
 
-\ Move the text cursor to column A, line X (lines are 6 rows apart).
+\ Move the text cursor to column A, line X (lines are 7 rows apart: one
+\ more than the font needs, for room between them).
 .at
 {
     ASL A : ASL A : STA text_x
-    TXA : ASL A : ASL A : ASL A : STA text_y
-    TXA : EOR #&FF : SEC : ADC text_y : STA text_y  ; x7: room between lines
+    STX text_y
+    TXA : ASL A : ASL A : ASL A                 ; (no carry: lines < 32)
+    SEC : SBC text_y : STA text_y
     RTS
 }
 
@@ -60,63 +62,72 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
 .type_names
     EQUS "PLAYER", 0, "MORON", 0, "SHOOTER", 0, "TOSSER", 0, "SPOILER", 0, "CYBORG", 0
 
-\ Print player X's money in 7 columns, with a dollar sign.
-.print_money
-{
-    TXA : STA t : ASL A : ADC t : TAX           ; x3
+\ Where each player's money starts in tank_money: three bytes apiece.
+.times3
+    EQUB (0..MAXP-1) * 3
+
+\ num = player X's money, and X = where it is in tank_money.
+.get_money
+    LDA times3,X : TAX
     LDA tank_money,X : STA num
     LDA tank_money+1,X : STA num+1
     LDA tank_money+2,X : STA num+2
+    RTS
+
+\ Print player X's money in 7 columns, with a dollar sign.
+.print_money
+    JSR get_money
     LDA #36 : JSR draw_char            ; $
     LDA #6 : JMP print_num
-.t EQUB 0
-}
 
 \ Player X gains num dollars.
 .money_add
-{
-    STX t : TXA : ASL A : ADC t : TAX
+    LDA times3,X : TAX
     LDA tank_money,X : CLC : ADC num : STA tank_money,X
     LDA tank_money+1,X : ADC num+1 : STA tank_money+1,X
     LDA tank_money+2,X : ADC num+2 : STA tank_money+2,X
     RTS
-.t EQUB 0
-}
+
+\ Carry set if player X has num dollars, with X = where the money is in
+\ tank_money.
+.can_afford
+    LDA times3,X : TAX
+    LDA tank_money,X : CMP num
+    LDA tank_money+1,X : SBC num+1
+    LDA tank_money+2,X : SBC num+2
+    RTS
 
 \ Player X pays num dollars if they can: carry set if paid, clear (and
 \ nothing taken) if not.
 .money_pay
-{
-    STX t : TXA : ASL A : ADC t : TAX
-    LDA tank_money,X : SEC : SBC num : STA t
-    LDA tank_money+1,X : SBC num+1 : STA t+1
-    LDA tank_money+2,X : SBC num+2 : BCC poor
-    STA tank_money+2,X
-    LDA t+1 : STA tank_money+1,X
-    LDA t : STA tank_money,X
+    JSR can_afford : BCC poor
+    LDA tank_money,X : SBC num : STA tank_money,X   ; (carry is set)
+    LDA tank_money+1,X : SBC num+1 : STA tank_money+1,X
+    LDA tank_money+2,X : SBC num+2 : STA tank_money+2,X
 .poor
     RTS
-.t EQUW 0
-}
+
+\ num = tank X's greatest power: ten times its health.
+.max_power
+    LDA tank_health,X : LDX #10 : BNE times
 
 \ num = A * 50: what a point of damage pays.
 .damage_pay
-{
+    LDX #50
+\ num = A * X.
+.times
     STA mul16.m : LDA #0 : STA mul16.m+1
-    LDA #50 : JSR mul16
-    LDA mul16.r : STA num : LDA mul16.r+1 : STA num+1
-    LDA #0 : STA num+2
-    RTS
-}
-
-\ num = A * 500.
-.five_hundreds
-{
-    LDX #LO(500) : STX mul16.m : LDX #HI(500) : STX mul16.m+1
+    TXA
+\ num = mul16.m * A.
+.times16
     JSR mul16
     LDA mul16.r : STA num : LDA mul16.r+1 : STA num+1 : LDA mul16.r+2 : STA num+2
     RTS
-}
+
+\ num = A * 500.
+.five_hundreds
+    LDX #LO(500) : STX mul16.m : LDX #HI(500) : STX mul16.m+1
+    BNE times16
 
 \ ---------------------------------------------------------------------------
 \ Title and setup.
@@ -331,17 +342,6 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     RTS
 }
 
-\ Carry set if player X has num dollars.
-.can_afford
-{
-    STX t : TXA : ASL A : ADC t : TAX
-    LDA tank_money,X : CMP num
-    LDA tank_money+1,X : SBC num+1
-    LDA tank_money+2,X : SBC num+2
-    RTS
-.t EQUB 0
-}
-
 \ Player `cur` buys a bundle of item A if they can afford it and have
 \ room for it. Carry set if they did.
 .buy
@@ -431,11 +431,8 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     ZA_AUTO1 i
     LDA #0 : STA i
 .player
-    LDA i : STA t : ASL A : ADC t : TAX
     \ num = money / 16
-    LDA tank_money,X : STA num
-    LDA tank_money+1,X : STA num+1
-    LDA tank_money+2,X : STA num+2
+    LDX i : JSR get_money
     LDY #4 : JSR shift
     LDA num : STA q : LDA num+1 : STA q+1 : LDA num+2 : STA q+2
     LDY #2 : JSR shift                          ; num = money / 64
@@ -452,7 +449,6 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LSR num+2 : ROR num+1 : ROR num
     DEY : BNE shift
     RTS
-.t EQUB 0
 .q EQUB 0, 0, 0
 }
 

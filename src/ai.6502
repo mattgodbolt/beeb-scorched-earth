@@ -166,10 +166,8 @@ ZA_AUTO2 ai_power
     ZA_AUTO2 lo, hi
     ZA_AUTO1 iter
     LDA #LO(80) : STA lo : LDA #HI(80) : STA lo+1
-    LDX cur
-    LDA tank_health,X : STA mul16.m : LDA #0 : STA mul16.m+1
-    LDA #10 : JSR mul16
-    LDA mul16.r : STA hi : LDA mul16.r+1 : STA hi+1
+    LDX cur : JSR max_power
+    LDA num : STA hi : LDA num+1 : STA hi+1
     LDA #8 : STA iter
 .step
     \ try the middle

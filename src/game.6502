@@ -325,15 +325,12 @@ MAX_WIND = 20
 \ Max power is ten times health.
 .clamp_power
 {
-    ZA_AUTO2 max
+    LDX cur : JSR max_power
     LDX cur
-    LDA tank_health,X : STA mul16.m : LDA #0 : STA mul16.m+1
-    LDA #10 : JSR mul16
-    LDX cur
-    LDA tank_power_lo,X : CMP mul16.r : LDA tank_power_hi,X : SBC mul16.r+1
+    LDA tank_power_lo,X : CMP num : LDA tank_power_hi,X : SBC num+1
     BCC ok
-    LDA mul16.r : STA tank_power_lo,X
-    LDA mul16.r+1 : STA tank_power_hi,X
+    LDA num : STA tank_power_lo,X
+    LDA num+1 : STA tank_power_hi,X
 .ok
     RTS
 }
@@ -522,9 +519,7 @@ MAX_WIND = 20
     LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_nth
 .wind_num
     \ wind is shown x10, as the original's 0-200 scale
-    STA mul16.m : LDA #0 : STA mul16.m+1
-    LDA #10 : JSR mul16
-    LDA mul16.r : STA num : LDA mul16.r+1 : STA num+1 : LDA #0 : STA num+2
+    LDX #10 : JSR times
     LDA #3 : JMP print_num
 }
 
