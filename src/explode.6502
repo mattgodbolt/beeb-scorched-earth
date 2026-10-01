@@ -352,52 +352,48 @@ ZA_AUTO1 blast_power        ; damage at the very centre
     LDX #0
 .tank
     STX cur
-    LDA tank_alive,X : BNE @+ : JMP next : .@
-    LDA tank_health,X : BNE @+ : JMP next : .@  ; dead already, just not gone
+    LDA tank_alive,X : BEQ next
+    LDA tank_health,X : BEQ next                ; dead already, just not gone
+    JSR this_tank
+.next
+    LDX cur : INX : CPX num_players : BNE tank
+    RTS
+
+.this_tank
     \ dx in rows = 2 * |tank_x - cx|
     LDA tank_x,X : SEC : SBC disc_cx
     BCS @+ : EOR #&FF : ADC #1 : .@
     CMP #40 : BCS far
-    ASL A : STA sq_in : JSR square
-    LDA square.out : STA dsq : LDA square.out+1 : STA dsq+1
+    ASL A : TAX : JSR umul8
+    LDA umul8.lo : STA dsq : LDA umul8.hi : STA dsq+1
     \ dy = |tank_y - 2 - cy|
     LDX cur
     LDA tank_y,X : SEC : SBC #2 : SEC : SBC disc_cy
     BCS @+ : EOR #&FF : ADC #1 : .@
     CMP #80 : BCS far
-    STA sq_in : JSR square
-    LDA square.out : CLC : ADC dsq : STA dsq
-    LDA square.out+1 : ADC dsq+1 : STA dsq+1
-    JSR isqrt : STA dist
-    CMP reach : BCS far
-    \ damage = (reach - dist) * blast_power / reach
+    TAX : JSR umul8
+    LDA umul8.lo : CLC : ADC dsq : STA dsq
+    LDA umul8.hi : ADC dsq+1 : STA dsq+1
+    \ dist = floor(sqrt(dsq)): the first d with d^2 > dsq, less one. Only a
+    \ dist under reach matters, so stop looking there.
+    LDY #0
+.root
+    INY
+    TYA : TAX : JSR umul8                       ; (preserves Y)
+    LDA dsq : CMP umul8.lo
+    LDA dsq+1 : SBC umul8.hi : BCC near
+    CPY reach : BNE root
+.far
+    RTS
+.near
+    DEY : STY dist
+    \ damage = (reach - dist) * blast_power / reach, which is never more
+    \ than blast_power, so fits in a byte
     LDA reach : SEC : SBC dist
     LDX blast_power : JSR umul8
     LDA umul8.lo : STA div16.n : LDA umul8.hi : STA div16.n+1
     LDA reach : JSR div16
-    LDA div16.n+1 : BEQ @+ : LDA #255 : STA div16.n : .@
-    LDA div16.n : JSR hurt
-.far
-.next
-    LDX cur : INX : CPX num_players : BEQ done
-    JMP tank
-.done
-    RTS
-.isqrt
-    \ A = floor(sqrt(dsq)), by counting odd numbers off it
-    LDX #0
-    LDA #1 : STA odd : LDA #0 : STA odd+1
-.sq
-    LDA dsq : SEC : SBC odd : TAY
-    LDA dsq+1 : SBC odd+1 : BCC root
-    STA dsq+1 : STY dsq
-    INX
-    LDA odd : CLC : ADC #2 : STA odd
-    BCC sq : INC odd+1 : JMP sq
-.root
-    TXA
-    RTS
-.odd EQUW 0
+    LDA div16.n : JMP hurt
 }
 
 \ Tank `cur` takes A points of damage (shield first). Pays the attacker.
@@ -429,16 +425,6 @@ ZA_AUTO1 blast_power        ; damage at the very centre
 }
 ZA_AUTO1 attacker, shields_broke
 .bit EQUB 1, 2, 4, 8, 16, 32
-
-\ Square of sq_in (0-127) -> square.out (16 bits).
-ZA_AUTO1 sq_in
-.square
-{
-    LDA sq_in : TAX : JSR umul8
-    LDA umul8.lo : STA out : LDA umul8.hi : STA out+1
-    RTS
-.out EQUW 0
-}
 
 \ 16 / 8 divide: div16.n / A -> div16.n, remainder in A.
 .div16
