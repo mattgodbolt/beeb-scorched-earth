@@ -30,7 +30,11 @@ run: $(TARGET)
 test: $(TARGET)
 	node tools/soak.mjs 3 6
 
-ship: $(TARGET)
+# Always a fresh build from a clean tree, so the stamp names a real commit.
+ship:
+	@git diff --quiet HEAD || { echo "commit first: the stamp would say +"; exit 1; }
+	rm -f $(TARGET)
+	$(MAKE) $(TARGET)
 	cp $(TARGET) scorched-earth.ssd
 
 clean:
