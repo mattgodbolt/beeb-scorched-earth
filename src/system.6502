@@ -14,12 +14,10 @@
     STA ula_pal
     CLC : ADC #&0F : CMP #&7F : BCC palette
     JSR glow_off
-    LDX #0
-.vdu
-    LDA cursor_off,X : JSR oswrch
-    INX : CPX #10 : BNE vdu
     \ Shorten the screen: fewer rows displayed, the start moved up to suit,
-    \ and vsync moved to keep the picture centred.
+    \ and vsync moved to keep the picture centred. The cursor goes off here
+    \ too, as VDU 23,1,0 would do it: the OS only rewrites R10 on a MODE
+    \ change, VDU 23,1 or VDU 4, and the game does none of those.
     LDX #crtc_end - crtc_regs - 2
 .crtc
     LDA crtc_regs,X : STA crtc_reg
@@ -37,9 +35,8 @@
     LDA #HI(our_irq) : STA irq1v+1
     CLI
     RTS
-.cursor_off
-    EQUB 23, 1, 0, 0, 0, 0, 0, 0, 0, 0
 .crtc_regs
+    EQUB 10, &20                                ; cursor: not displayed
     EQUB 6, SCREEN_ROWS
     EQUB 7, 34 - (32 - SCREEN_ROWS) DIV 2
     EQUB 12, HI(screen DIV 8)
