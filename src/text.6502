@@ -26,85 +26,93 @@ ZA_AUTO1 text_x, text_y     ; pixel position of the next character (x even)
     LDX #C_BLACK
 .set_colours
 {
-    ZA_AUTO1 fg, bg
-    TAY : LDA cbytes,Y : STA fg
-    LDA cbytes,X : STA bg
-    AND #LEFTPIX : STA t : LDA bg : AND #RIGHTPIX : ORA t : STA pattern+0   ; ..
-    LDA bg : AND #LEFTPIX : STA t : LDA fg : AND #RIGHTPIX : ORA t : STA pattern+1   ; .#
-    LDA fg : AND #LEFTPIX : STA t : LDA bg : AND #RIGHTPIX : ORA t : STA pattern+2   ; #.
-    LDA fg : STA pattern+3                                                          ; ##
+    ZA_AUTO1 diff
+    \ pattern = paper EOR ((ink EOR paper) AND mask): ink under the mask
+    TAY : LDA cbytes,Y : EOR cbytes,X : STA diff
+    LDY #3
+.loop
+    LDA diff : AND masks,Y : EOR cbytes,X : STA pattern,Y
+    DEY : BPL loop
     RTS
-.t EQUB 0
+.masks EQUB 0, RIGHTPIX, LEFTPIX, &FF       ; .. .# #. ##
 }
 .pattern EQUB 0, 0, 0, 0
 
-\ Draw character A at (text_x, text_y) and move text_x on a cell.
+\ Draw character A at (text_x, text_y) and move text_x on a cell. Returns
+\ A = text_x (menu.6502's "JSR draw_char : JSR draw_char" relies on that
+\ being >= 96, so the second call draws a space).
 .draw_char
 {
-    ZA_AUTO2 ptr, bits
+    ZA_AUTO2 bits
     ZA_AUTO1 row, y
     SEC : SBC #32 : CMP #64 : BCC @+ : LDA #0 : .@   ; anything else is a space
     ASL A : TAX
     LDA font,X : STA bits
     LDA font+1,X : STA bits+1
-    LDA #0 : STA row
+    LDA #6 : STA row
     LDA text_y : STA y
 .rowloop
-    LDY y : LDX text_x
-    LDA rowlo,Y : CLC : ADC coloff_lo,X : STA ptr
-    LDA rowhi,Y : ADC coloff_hi,X : STA ptr+1
+    LDY y : LDX text_x : JSR pixaddr
     \ Next three bits: two for the first byte, one for the second.
     LDA #0
     ASL bits : ROL bits+1 : ROL A
     ASL bits : ROL bits+1 : ROL A
     TAX : LDA pattern,X
-    LDY #0 : STA (ptr),Y
+    LDY #0 : STA (scr),Y
     LDA #0
     ASL bits : ROL bits+1 : ROL A
     ASL A : TAX : LDA pattern,X
-    LDY #8 : STA (ptr),Y
+    LDY #8 : STA (scr),Y
     INC y
-    INC row : LDA row : CMP #6 : BNE rowloop
+    DEC row : BNE rowloop
     LDA text_x : CLC : ADC #4 : STA text_x
     RTS
 }
 
 \ Print the zero-terminated string that follows the JSR.
+ZA_AUTO2 str_ptr
 .print_inline
 {
-    ZA_AUTO2 ptr
-    PLA : STA ptr : PLA : STA ptr+1
-.next
-    INC ptr : BNE @+ : INC ptr+1 : .@
-    LDY #0 : LDA (ptr),Y : BEQ done
-    JSR draw_char
-    JMP next
-.done
-    LDA ptr+1 : PHA : LDA ptr : PHA
+    PLA : STA str_ptr : PLA : STA str_ptr+1
+    LDY #1                                      ; the JSR pushed its last byte
+    JSR print_from
+    \ Return to the terminator's address, + 1 by the RTS.
+    TYA : CLC : ADC str_ptr : TAX
+    LDA str_ptr+1 : ADC #0 : PHA
+    TXA : PHA
     RTS
 }
 
 \ Print the zero-terminated string at (A = lo, X = hi).
 .print_string
-{
-    ZA_AUTO2 ptr
-    STA ptr : STX ptr+1
+    STA str_ptr : STX str_ptr+1
     LDY #0
+\ Print from (str_ptr),Y to the terminator; returns Y = its index.
+.print_from
+{
+    ZA_AUTO1 y
 .next
-    LDA (ptr),Y : BEQ done
+    LDA (str_ptr),Y : BEQ done
     STY y : JSR draw_char : LDY y
     INY : BNE next
 .done
     RTS
-.y EQUB 0
 }
+
+ZA_AUTO 3, num
+
+\ Print an 8-bit number in A, right-aligned in X characters.
+.print_byte
+    STA num
+    LDA #0 : STA num+1 : STA num+2
+    TXA
+    \ fall through
 
 \ Print num (24-bit) in decimal, right-aligned in A characters, padded
 \ with spaces (A = 1..8).
-ZA_AUTO 3, num
 .print_num
 {
-    ZA_AUTO1 width, digit, started
+    ZA_AUTO1 width, digit, started, mid, xsave
     STA width
     LDA #0 : STA started
     LDX #7                      ; power-of-ten index, 10^7 .. 10^0
@@ -112,36 +120,26 @@ ZA_AUTO 3, num
     LDA #0 : STA digit
 .sub
     LDA num : SEC : SBC pow_lo,X : TAY
-    LDA num+1 : SBC pow_mid,X : STA t
+    LDA num+1 : SBC pow_mid,X : STA mid
     LDA num+2 : SBC pow_hi,X : BCC enough
-    STA num+2 : LDA t : STA num+1 : STY num
-    INC digit : JMP sub
+    STA num+2 : LDA mid : STA num+1 : STY num
+    INC digit : BCS sub         ; (always: carry is still set)
 .enough
     LDA digit : ORA started : STA started
     BNE show
-    CPX #0 : BEQ show           ; the units digit always shows
+    TXA : BEQ show              ; the units digit always shows
     CPX width : BCS skip        ; leading zeroes outside the field: nothing
     LDA #32 : BNE out           ; inside it: a space
 .show
     LDA digit : ORA #48
 .out
-    STX t : JSR draw_char : LDX t
+    STX xsave : JSR draw_char : LDX xsave
 .skip
     DEX : BPL place
     RTS
-.t EQUB 0
 .pow_lo  EQUB LO({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
 .pow_mid EQUB HI({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
 .pow_hi  EQUB ({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000} >> 16) AND 255
-}
-
-\ Print an 8-bit number in A, right-aligned in X characters.
-.print_byte
-{
-    STA num
-    LDA #0 : STA num+1 : STA num+2
-    TXA
-    JMP print_num
 }
 
 \ Glyphs for ASCII 32-95.
