@@ -48,6 +48,41 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     RTS
 }
 
+\ Print a string somewhere in some colour, all given inline after the JSR:
+\     JSR print_at : EQUB colour, x, y : EQUS "TEXT", 0
+\ with x and y in pixels. Most of the text on the screens between rounds
+\ is placed like this; the PRINT_AT macro takes columns and lines.
+.print_at
+{
+    ZA_AUTO2 ptr
+    PLA : STA ptr : PLA : STA ptr+1
+    LDY #3 : LDA (ptr),Y : STA text_y
+    DEY : LDA (ptr),Y : STA text_x
+    DEY : LDA (ptr),Y : JSR ink
+    \ print_inline does the rest, from past those three bytes
+    LDA ptr : CLC : ADC #3 : TAX
+    LDA ptr+1 : ADC #0 : PHA
+    TXA : PHA
+    JMP print_inline
+}
+\ Print spaces (at least one) up to pixel column A.
+.pad_to
+{
+    ZA_AUTO1 to
+    STA to
+.pad
+    LDA #32 : JSR draw_char
+    LDA text_x : CMP to : BCC pad
+    RTS
+}
+
+MACRO PRINT_XY colour, x, y, text
+    JSR print_at : EQUB colour, x, y : EQUS text, 0
+ENDMACRO
+MACRO PRINT_AT colour, col, line, text
+    PRINT_XY colour, col * 4, line * 7, text
+ENDMACRO
+
 \ Print player X's name: "PLAYER 1", or the personality for a computer.
 .print_name
 {
@@ -151,15 +186,9 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA #17 : JSR oswrch : PLA : JSR oswrch     ; COLOUR 1-6
     LDA title_text,X : JSR oswrch
     INX : CPX #title_end - title_text : BNE loop
-    JSR white
-    LDA #8 : LDX #4 : JSR at
-    JSR print_inline : EQUS "THE MOTHER OF ALL GAMES", 0
-    LDA #C_CYAN : JSR ink
-    LDA #7 : LDX #31 : JSR at
-    JSR print_inline : EQUS "AFTER WENDELL HICKEN 1991", 0
-    LDA #C_BLUE : JSR ink
-    LDA #0 : LDX #0 : JSR at
-    JSR print_inline : EQUS build_stamp, 0
+    PRINT_AT C_WHITE, 8, 4, "THE MOTHER OF ALL GAMES"
+    PRINT_AT C_CYAN, 7, 31, "AFTER WENDELL HICKEN 1991"
+    PRINT_AT C_BLUE, 0, 0, build_stamp
     RTS
 }
 
@@ -172,12 +201,9 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     JSR draw_title
     LDA #0 : STA menu_sel
 .redraw
-    LDA #C_YELLOW : JSR ink
-    LDA #7 : LDX #8 : JSR at
-    JSR print_inline : EQUS "PLAYERS ", 0
+    PRINT_AT C_YELLOW, 7, 8, "PLAYERS "
     LDA num_players : LDX #2 : JSR print_byte
-    LDA #7 : LDX #10 : JSR at
-    JSR print_inline : EQUS "ROUNDS  ", 0
+    PRINT_AT C_YELLOW, 7, 10, "ROUNDS  "
     LDA num_rounds : LDX #2 : JSR print_byte
     LDA #0 : STA i
 .player
@@ -199,10 +225,8 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA #32 : LDX i : CPX menu_sel : BNE @+ : LDA #62 : .@
     JSR draw_char
     INC i : LDA i : CMP #MAXP+2 : BNE marker
-    LDA #4 : LDX #26 : JSR at
-    JSR print_inline : EQUS "UP/DOWN CHOOSE  LEFT/RIGHT CHANGE", 0
-    LDA #11 : LDX #28 : JSR at
-    JSR print_inline : EQUS "SPACE TO START", 0
+    PRINT_AT C_WHITE, 4, 26, "UP/DOWN CHOOSE  LEFT/RIGHT CHANGE"
+    PRINT_AT C_WHITE, 11, 28, "SPACE TO START"
 .key
     JSR get_key
     CMP #32 : BEQ go
@@ -249,7 +273,6 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
 
 .shop
 {
-    ZA_AUTO1 i
     LDA #0 : STA cur
 .player
     LDX cur : LDA tank_type,X : BEQ human
@@ -271,11 +294,8 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA #1 : LDX #1 : JSR at
     LDX cur : JSR print_name
     JSR print_inline : EQUS " GOES SHOPPING", 0
-    LDA #C_CYAN : JSR ink
-    LDA #1 : LDX #3 : JSR at
-    JSR print_inline : EQUS "ITEM             QTY  PRICE OWNED", 0
-    LDA #5 : LDX #26 : JSR at
-    JSR print_inline : EQUS "RETURN BUYS   SPACE TO FIGHT", 0
+    PRINT_AT C_CYAN, 1, 3, "ITEM             QTY  PRICE OWNED"
+    PRINT_AT C_CYAN, 5, 26, "RETURN BUYS   SPACE TO FIGHT"
 .redraw
     LDA #1 : STA i
 .all
@@ -322,14 +342,11 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     TXA : JSR ink
     LDA item : CLC : ADC #4 : TAX : LDA #1 : JSR at
     LDA item : JSR print_item_name
-.pad
-    LDA #32 : JSR draw_char
-    LDA text_x : CMP #4*18 : BCC pad
+    LDA #4*18 : JSR pad_to
+    \ (the wide fields leave the spaces between the columns)
     LDX item : LDA item_bundle,X : LDX #2 : JSR print_byte
-    LDA #32 : JSR draw_char
-    LDA item : JSR price : LDA #6 : JSR print_num
-    LDA #32 : JSR draw_char : JSR draw_char
-    LDA item : JSR inv_index : LDA inv,X : LDX #3 : JMP print_byte
+    LDA item : JSR price : LDA #7 : JSR print_num
+    LDA item : JSR inv_index : LDA inv,X : LDX #5 : JMP print_byte
 }
 
 \ num = the price of item A.
@@ -388,9 +405,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     ZA_AUTO1 i, winner
     STA winner
     JSR cls
-    JSR white
-    LDA #13 : LDX #3 : JSR at
-    JSR print_inline : EQUS "ROUND ", 0
+    PRINT_AT C_WHITE, 13, 3, "ROUND "
     LDA round_no : LDX #2 : JSR print_byte
     JSR print_inline : EQUS " OF ", 0
     LDA num_rounds : LDX #2 : JSR print_byte
@@ -403,9 +418,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
 .nobody
     JSR print_inline : EQUS "NOBODY WINS", 0
 .table
-    LDA #C_CYAN : JSR ink
-    LDA #6 : LDX #10 : JSR at
-    JSR print_inline : EQUS "PLAYER       SCORE    MONEY", 0
+    PRINT_AT C_CYAN, 6, 10, "PLAYER       SCORE    MONEY"
     LDA #0 : STA i
 .row
     LDX i : LDA tank_colour,X : JSR ink
@@ -416,9 +429,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA #4*26 : STA text_x
     LDX i : JSR print_money
     INC i : LDA i : CMP num_players : BNE row
-    JSR white
-    LDA #11 : LDX #28 : JSR at
-    JSR print_inline : EQUS "SPACE TO GO ON", 0
+    PRINT_AT C_WHITE, 11, 28, "SPACE TO GO ON"
 .wait
     JSR get_key : CMP #32 : BNE wait
     RTS
@@ -467,9 +478,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDX best : JSR print_name
     JSR print_inline : EQUS " IS CHAMPION", 0
     JSR snd_fanfare
-    JSR white
-    LDA #10 : LDX #28 : JSR at
-    JSR print_inline : EQUS "SPACE TO PLAY AGAIN", 0
+    PRINT_AT C_WHITE, 10, 28, "SPACE TO PLAY AGAIN"
 .wait
     JSR get_key : CMP #32 : BNE wait
     RTS

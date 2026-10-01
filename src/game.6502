@@ -479,20 +479,15 @@ MAX_WIND = 20
 
 .draw_status
 {
-    JSR white
-    LDA #0 : STA text_x : LDA #2 : STA text_y
-    JSR print_inline : EQUS "POWER", 0
+    PRINT_XY C_WHITE, 0, 2, "POWER"
     JSR draw_power
-    LDA #4*12 : STA text_x
-    JSR print_inline : EQUS "ANGLE", 0
+    PRINT_XY C_WHITE, 4*12, 2, "ANGLE"
     JSR draw_angle
     \ name, in the tank's colour
     LDX cur : LDA tank_colour,X : JSR ink
     LDA #4*24 : STA text_x
     LDX cur : JSR print_name
-.namepad
-    LDA #32 : JSR draw_char
-    LDA text_x : CMP #4*34 : BCC namepad
+    LDA #4*34 : JSR pad_to
     \ wind
     LDA #C_CYAN : JSR ink
     LDA wind : BEQ calm : BPL east
@@ -506,11 +501,8 @@ MAX_WIND = 20
 .calm
     JSR print_inline : EQUS "CALM ", 0
 .line2
-    JSR white
     JSR draw_weapon
-    JSR white
-    LDA #4*21 : STA text_x
-    JSR print_inline : EQUS "HEALTH", 0
+    PRINT_XY C_WHITE, 4*21, 9, "HEALTH"
     LDX cur : LDA tank_health,X : LDX #4 : JSR print_byte
     \ the walls, in the original's colours
     LDX wall_type : LDA wall_colours,X : JSR ink
@@ -545,9 +537,7 @@ MAX_WIND = 20
     JSR white
     LDA #0 : STA text_x : LDA #9 : STA text_y
     LDX cur : LDA tank_weapon,X : JSR print_item_name
-.pad
-    LDA #32 : JSR draw_char
-    LDA text_x : CMP #4*16 : BCC pad
+    LDA #4*16 : JSR pad_to
     LDX cur : LDA tank_weapon,X : BEQ lots
     JSR inv_index : LDA inv,X : LDX #2 : JMP print_byte
 .lots
