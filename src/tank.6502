@@ -21,10 +21,6 @@ BARREL_LEN  = 7
     EQUB %1111111
     EQUB %0101010
 
-\ sin(d) * 255 for d = 0..90 degrees.
-.sintab
-    EQUB ROUND(SIN((0..90) * PI / 180) * 255)
-
 \ Break an angle (0-180) into upward and sideways magnitudes.
 \ In: A = angle. Out: vec_up = sin, vec_side = |cos|, vec_left = &FF if
 \ the angle points left, else 0. Preserves Y.

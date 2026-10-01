@@ -1,0 +1,32 @@
+\ ***************************************************************************
+\ Constant tables that live below &0E00, in holes memory.6502 leaves free.
+\ main.6502 carries each section inside the SCORCH file and boot.6502 copies
+\ it into place, so none of them costs a byte of code space. Only data read
+\ by address belongs here: nothing in these sections is ever written.
+\ ***************************************************************************
+
+.low_tape_payload
+SECTION LowTape, org = &0380, guard = &03E0
+\ sin(d) * 255 for d = 0..90 degrees.
+.sintab
+    EQUB ROUND(SIN((0..90) * PI / 180) * 255)
+.low_tape_end
+ENDSECTION
+
+.low_udg_payload
+SECTION LowUdg, org = tables_end, guard = &0D00
+.item_kind      EQUB ITEMS[.., 1]
+.item_radius    EQUB ITEMS[.., 2]
+.item_power     EQUB ITEMS[.., 3]
+.item_bundle    EQUB ITEMS[.., 5]
+.low_udg_end
+ENDSECTION
+
+.low_nmi_payload
+SECTION LowNmi, org = nmi_end, guard = &0DF0
+.item_price_lo  EQUB LO(ITEMS[.., 4])
+.item_price_hi  EQUB HI(ITEMS[.., 4])
+\ Inventory: inv[inv_base[player] + item].
+.inv_base       EQUB (0..MAXP-1) * NITEMS
+.low_nmi_end
+ENDSECTION

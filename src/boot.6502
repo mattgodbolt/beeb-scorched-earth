@@ -1,0 +1,138 @@
+\ ***************************************************************************
+\ Start-up: everything that runs once, before the game proper.
+\
+\ main.6502 carries this inside the SCORCH file and the loader copies it to
+\ skyrow/dirtrow after the game has been copied down, so none of it costs
+\ a byte of code space: make_colours fills those tables before the first
+\ round is drawn, overwriting it. It can't run where it was loaded, in
+\ screen memory, because the first thing it does is clear the screen.
+\ ***************************************************************************
+
+.boot
+{
+    ZA_ENTRY
+    \ The constant tables that live below &0E00 (lowdata.6502). First,
+    \ because they are carried in screen memory and init_system clears it.
+    LDX #low_tape_end - sintab
+.tape
+    LDA low_tape_payload-1,X : STA sintab-1,X
+    DEX : BNE tape
+    LDX #low_udg_end - item_kind
+.udg
+    LDA low_udg_payload-1,X : STA item_kind-1,X
+    DEX : BNE udg
+    LDX #low_nmi_end - item_price_lo
+.nmi
+    LDA low_nmi_payload-1,X : STA item_price_lo-1,X
+    DEX : BNE nmi
+    JSR init_system
+    JSR init_tables
+    JSR snd_init
+    \ The setup screen's defaults: player 1 human, the rest Spoilers.
+    LDX #MAXP-1
+.defaults
+    LDA player_colours,X : STA tank_colour,X
+    LDA #SPOILER : STA tank_type,X
+    DEX : BPL defaults
+    LDA #HUMAN : STA tank_type
+    JMP start
+}
+
+\ Cursor off, screen shortened, palette set, interrupts hooked. (!BOOT has
+\ already selected MODE 2.)
+.init_system
+{
+    JSR cls
+    \ Logical colours 0-7 are their own physical colours (the ULA wants the
+    \ physical one EOR 7); 8-15 stay black until a blast lights them.
+    LDA #&07
+.palette
+    STA ula_pal
+    CLC : ADC #&0F : CMP #&7F : BCC palette
+    JSR glow_off
+    LDX #0
+.vdu
+    LDA cursor_off,X : JSR oswrch
+    INX : CPX #10 : BNE vdu
+    \ Shorten the screen: fewer rows displayed, the start moved up to suit,
+    \ and vsync moved to keep the picture centred.
+    LDX #crtc_end - crtc_regs - 2
+.crtc
+    LDA crtc_regs,X : STA crtc_reg
+    LDA crtc_regs+1,X : STA crtc_data
+    DEX : DEX : BPL crtc
+    \ ESCAPE does nothing; the game polls it as an ordinary key.
+    LDA #229 : LDX #1 : LDY #0 : JSR osbyte
+    \ Cursor keys give codes 136-139 to OSRDCH, for the menus.
+    LDA #4 : LDX #1 : JSR osbyte
+    \ Hook IRQ1V to count vsyncs.
+    SEI
+    LDA irq1v : STA old_irq
+    LDA irq1v+1 : STA old_irq+1
+    LDA #LO(our_irq) : STA irq1v
+    LDA #HI(our_irq) : STA irq1v+1
+    CLI
+    RTS
+.cursor_off
+    EQUB 23, 1, 0, 0, 0, 0, 0, 0, 0, 0
+.crtc_regs
+    EQUB 6, SCREEN_ROWS
+    EQUB 7, 34 - (32 - SCREEN_ROWS) DIV 2
+    EQUB 12, HI(screen DIV 8)
+    EQUB 13, LO(screen DIV 8)
+.crtc_end
+}
+
+\ Build the row and column address tables.
+.init_tables
+{
+    ZA_AUTO2 base
+    LDA #LO(screen) : STA base
+    LDA #HI(screen) : STA base+1
+    LDY #0
+.row
+    TYA : AND #7 : CLC : ADC base : STA rowlo,Y
+    LDA base+1 : ADC #0 : STA rowhi,Y
+    INY : BEQ cols
+    TYA : AND #7 : BNE row
+    LDA base : CLC : ADC #LO(640) : STA base     ; next character row
+    LDA base+1 : ADC #HI(640) : STA base+1
+    JMP row
+.cols
+    LDX #0
+.col
+    TXA : AND #&FE : STA coloff_lo,X            ; (x >> 1) * 8 = (x & ~1) * 4
+    LDA #0 : STA coloff_hi,X
+    ASL coloff_lo,X : ROL coloff_hi,X
+    ASL coloff_lo,X : ROL coloff_hi,X
+    INX : CPX #SCREEN_W : BNE col
+    RTS
+}
+
+\ Envelopes. OSWORD 8 takes them as they are: number, step length in
+\ centiseconds (+&80: the pitch envelope does not repeat), three pitch
+\ changes and their step counts, then attack/decay/sustain/release rates
+\ and the attack and decay target levels (126 is full volume).
+.snd_init
+{
+    LDA #0
+.loop
+    PHA
+    CLC : ADC #LO(envs) : TAX
+    LDA #HI(envs) : ADC #0 : TAY
+    LDA #8 : JSR osword
+    PLA : CLC : ADC #14
+    CMP #envs_end - envs : BNE loop
+    RTS
+.envs
+    \ 1: boom. Instant attack, a fall to a long, slowly fading body that
+    \ lasts as long as the note does, then a quick tail.
+    EQUB 1, 2,    0, 0, 0,   0, 0, 0,   126, -4, -1, -8,  126, 90
+    \ 2: slide. Pitch falls one step every 2cs and never comes back up.
+    EQUB 2, &82, -1, 0, 0, 120, 0, 0,   126, -1,  0, -4,  110, 90
+    \ 3: blip. A struck note that dies away.
+    EQUB 3, 1,    0, 0, 0,   0, 0, 0,   126, -8, -1, -10, 126, 80
+    \ 4: whistle. Steady and quieter, so it sits under everything else.
+    EQUB 4, 1,    0, 0, 0,   0, 0, 0,    70, -1,  0, -10,  70, 60
+.envs_end
+}
