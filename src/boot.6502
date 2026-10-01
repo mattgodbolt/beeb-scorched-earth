@@ -50,12 +50,10 @@
     STA ula_pal
     CLC : ADC #&0F : CMP #&7F : BCC palette
     JSR glow_off
-    LDX #0
-.vdu
-    LDA cursor_off,X : JSR oswrch
-    INX : CPX #10 : BNE vdu
     \ Shorten the screen: fewer rows displayed, the start moved up to suit,
-    \ and vsync moved to keep the picture centred.
+    \ and vsync moved to keep the picture centred. The cursor goes off here
+    \ too, as VDU 23,1,0 would do it: the OS only rewrites R10 on a MODE
+    \ change, VDU 23,1 or VDU 4, and the game does none of those.
     LDX #crtc_end - crtc_regs - 2
 .crtc
     LDA crtc_regs,X : STA crtc_reg
@@ -73,9 +71,8 @@
     LDA #HI(our_irq) : STA irq1v+1
     CLI
     RTS
-.cursor_off
-    EQUB 23, 1, 0, 0, 0, 0, 0, 0, 0, 0
 .crtc_regs
+    EQUB 10, &20                                ; cursor: not displayed
     EQUB 6, SCREEN_ROWS
     EQUB 7, 34 - (32 - SCREEN_ROWS) DIV 2
     EQUB 12, HI(screen DIV 8)
@@ -87,24 +84,25 @@
 .init_tables
 {
     ZA_AUTO2 base
+    \ The screen starts on a multiple of 8 and character rows are 640 bytes
+    \ apart, so a row's offset within its cell can be ORed in.
+    ASSERT (screen AND 7) == 0 AND (640 AND 7) == 0
     LDA #LO(screen) : STA base
     LDA #HI(screen) : STA base+1
     LDY #0
 .row
-    TYA : AND #7 : CLC : ADC base : STA rowlo,Y
-    LDA base+1 : ADC #0 : STA rowhi,Y
+    TYA : AND #7 : ORA base : STA rowlo,Y
+    LDA base+1 : STA rowhi,Y
     INY : BEQ cols
     TYA : AND #7 : BNE row
     LDA base : CLC : ADC #LO(640) : STA base     ; next character row
     LDA base+1 : ADC #HI(640) : STA base+1
-    JMP row
+    BCC row                                     ; (always: no carry out)
 .cols
     LDX #0
 .col
-    TXA : AND #&FE : STA coloff_lo,X            ; (x >> 1) * 8 = (x & ~1) * 4
-    LDA #0 : STA coloff_hi,X
-    ASL coloff_lo,X : ROL coloff_hi,X
-    ASL coloff_lo,X : ROL coloff_hi,X
+    TXA : AND #&FE : ASL A : ASL A : STA coloff_lo,X     ; (x >> 1) * 8
+    TXA : LSR A : LSR A : LSR A : LSR A : LSR A : LSR A : STA coloff_hi,X
     INX : CPX #SCREEN_W : BNE col
     RTS
 }

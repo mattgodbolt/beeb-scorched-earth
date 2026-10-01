@@ -3,128 +3,98 @@
 \ Nothing here goes through the OS.
 \ ***************************************************************************
 
+\ Point scr at the screen byte holding pixel (X, Y). Preserves X and Y.
+ZA_AUTO2 scr
+.pixaddr
+    LDA rowlo,Y : CLC : ADC coloff_lo,X : STA scr
+    LDA rowhi,Y : ADC coloff_hi,X : STA scr+1
+    RTS
+
+\ Put the background back at one pixel. X = x, Y = y. The background is
+\ the model's: dirt at or below the ground line, sky above it.
+.unplot
+    TYA : CMP ground,X                          ; carry set: dirt
+    LDA skyrow,Y : BCC plot
+    LDA dirtrow,Y
+    \ fall through
+
 \ Plot one pixel. X = x, Y = y, A = colour byte (both pixels; only the half
 \ that belongs to x is used). Preserves X and Y.
 .plot
 {
-    ZA_AUTO2 ptr
     ZA_AUTO1 col, ysave
     STA col : STY ysave
-    LDA rowlo,Y : CLC : ADC coloff_lo,X : STA ptr
-    LDA rowhi,Y : ADC coloff_hi,X : STA ptr+1
+    JSR pixaddr
     LDY #0
-    TXA : LSR A : BCS right
-    LDA col : AND #LEFTPIX : STA col
-    LDA (ptr),Y : AND #RIGHTPIX : ORA col : STA (ptr),Y
-    LDY ysave
-    RTS
+    TXA : LSR A                                 ; carry set: the right pixel
+    \ old EOR ((old EOR col) AND mask) takes col's bits under the mask only
+    LDA (scr),Y : EOR col
+    BCS right
+    AND #LEFTPIX
+    BITABS
 .right
-    LDA col : AND #RIGHTPIX : STA col
-    LDA (ptr),Y : AND #LEFTPIX : ORA col : STA (ptr),Y
+    AND #RIGHTPIX
+    EOR (scr),Y : STA (scr),Y
     LDY ysave
     RTS
 }
-
-\ The background colour byte at (X, Y), from the model: dirt at or below
-\ the ground line, sky above it. Preserves X and Y.
-.bgbyte
-{
-    TYA : CMP ground,X : BCS dirt
-    LDA skyrow,Y
-    RTS
-.dirt
-    LDA dirtrow,Y
-    RTS
-}
-
-\ Put the background back at one pixel. X = x, Y = y.
-.unplot
-    JSR bgbyte
-    JMP plot
 
 \ Fill a horizontal run of pixels. Y = row, span_x0..span_x1 inclusive
-\ (already clipped to the screen), A = colour byte.
+\ (already clipped to the screen), A = colour byte. Preserves Y.
 ZA_AUTO1 span_x0, span_x1
 .hspan
 {
-    ZA_AUTO2 ptr
-    ZA_AUTO1 fill, t, n
-    STA fill
+    ZA_AUTO1 fill, row
+    STA fill : STY row
     LDX span_x0
-    LDA rowlo,Y : CLC : ADC coloff_lo,X : STA ptr
-    LDA rowhi,Y : ADC coloff_hi,X : STA ptr+1
-    LDA span_x1 : SEC : SBC span_x0 : TAY : INY : STY n   ; n = pixel count
-    LDY #0
     TXA : LSR A : BCC even
     \ Odd start: the first byte gets its right pixel only.
-    LDA fill : AND #RIGHTPIX : STA t
-    LDA (ptr),Y : AND #LEFTPIX : ORA t : STA (ptr),Y
-    LDY #8
-    DEC n : BEQ done
+    LDA fill : JSR plot
+    INX
 .even
-    LSR n : PHP                 ; n = whole bytes, carry = a left pixel over
-    LDX n : BEQ tail
+    JSR pixaddr
+    LDY #0
 .whole
-    LDA fill : STA (ptr),Y
+    CPX span_x1 : BCS tail                      ; fewer than two pixels left
+    LDA fill : STA (scr),Y
     TYA : CLC : ADC #8 : TAY
-    BCC @+ : INC ptr+1 : .@
-    DEX : BNE whole
+    BCC @+ : INC scr+1 : .@
+    INX : INX : BNE whole                       ; (always: X <= 160)
 .tail
-    PLP : BCC done
-    LDA fill : AND #LEFTPIX : STA t
-    LDA (ptr),Y : AND #RIGHTPIX : ORA t : STA (ptr),Y
+    BNE done                                    ; none
+    LDA fill : LDY row : JMP plot               ; one: a left pixel
 .done
-    RTS
-}
-
-\ Repaint byte column X (pixels 2X and 2X+1) from the model, rows
-\ bg_y0..bg_y1 inclusive.
-ZA_AUTO1 bg_y0, bg_y1
-.draw_bgcol
-{
-    ZA_AUTO2 ptr
-    ZA_AUTO1 gl, gr, t, y
-    TXA : ASL A : TAX
-    LDA ground,X : STA gl
-    LDA ground+1,X : STA gr
-    LDY bg_y0
-.row
-    LDA rowlo,Y : CLC : ADC coloff_lo,X : STA ptr
-    LDA rowhi,Y : ADC coloff_hi,X : STA ptr+1
-    CPY gl : BCS ldirt
-    LDA skyrow,Y : BCC lpix
-.ldirt
-    LDA dirtrow,Y
-.lpix
-    AND #LEFTPIX : STA t
-    CPY gr : BCS rdirt
-    LDA skyrow,Y : BCC rpix
-.rdirt
-    LDA dirtrow,Y
-.rpix
-    AND #RIGHTPIX : ORA t
-    STY y : LDY #0 : STA (ptr),Y : LDY y
-    CPY bg_y1 : BEQ done
-    INY
-    JMP row
-.done
+    LDY row
     RTS
 }
 
 \ Repaint a rectangle from the model: pixels rect_x0..rect_x1 (clipped
-\ here), rows bg_y0..bg_y1.
+\ here), rows bg_y0..bg_y1 inclusive, a byte column (two pixels) at a
+\ time.
+ZA_AUTO1 bg_y0, bg_y1
 ZA_AUTO1 rect_x0, rect_x1
 .repaint
 {
-    ZA_AUTO1 c, cend
+    ZA_AUTO1 c, cend, gl, gr, t, y
     LDA rect_x1 : CMP #SCREEN_W : BCC @+ : LDA #SCREEN_W-1 : .@
     LSR A : STA cend
     LDA rect_x0 : LSR A : STA c                 ; (callers clip x0 at 0)
-.loop
-    LDX c : JSR draw_bgcol
-    LDA c : CMP cend : BEQ done
-    INC c : JMP loop
-.done
+.col
+    LDA c : ASL A : TAX                         ; the column's left pixel
+    LDA ground,X : STA gl
+    LDA ground+1,X : STA gr
+    LDY bg_y0
+.row
+    JSR pixaddr
+    CPY gl : LDA skyrow,Y : BCC @+ : LDA dirtrow,Y : .@
+    AND #LEFTPIX : STA t
+    CPY gr : LDA skyrow,Y : BCC @+ : LDA dirtrow,Y : .@
+    AND #RIGHTPIX : ORA t
+    STY y : LDY #0 : STA (scr),Y : LDY y
+    CPY bg_y1 : BEQ next
+    INY : BNE row                               ; (always: rows end at FLOOR)
+.next
+    LDA c : INC c : CMP cend : BNE col
     RTS
 }
 
@@ -140,36 +110,25 @@ ZA_AUTO1 disc_r, disc_cx, disc_cy
 \ Build profile[0..disc_r] and colspan[0..profile[0]] for radius disc_r.
 .make_profile
 {
-    ZA_AUTO1 x, dy
-    ZA_AUTO2 xsq, dsq, lim, t
-    LDA disc_r : STA x
-    TAX : JSR umul8 : LDA umul8.lo : STA xsq    ; x^2
-    LDA umul8.hi : STA xsq+1
-    LDA xsq : CLC : ADC disc_r : STA lim        ; lim = r^2 + r: the midpoint
-    LDA xsq+1 : ADC #0 : STA lim+1              ; circle's rounding
-    LDA #0 : STA dsq : STA dsq+1 : STA dy
+    ZA_AUTO1 x, dy, e
+    \ The midpoint circle: row dy reaches out to the largest x with
+    \ x^2 + dy^2 <= r^2 + r. e tracks r^2 + r - x^2 - dy^2, which stays
+    \ within -127..126, so its sign bit says whether x fits.
+    LDA disc_r : STA x : STA e                  ; x = r, dy = 0: e = r
+    LDA #0 : STA dy
 .row
-    \ Shrink x until x^2 + dy^2 <= lim.
-    LDA xsq : CLC : ADC dsq : STA t
-    LDA xsq+1 : ADC dsq+1 : STA t+1
-    LDA lim : CMP t
-    LDA lim+1 : SBC t+1
-    BCS fits
-    \ x^2 -= 2x - 1, x -= 1
-    LDA x : ASL A : STA t
-    LDA xsq : SEC : SBC t : STA xsq
-    LDA xsq+1 : SBC #0 : STA xsq+1
-    INC xsq : BNE @+ : INC xsq+1 : .@
-    DEC x
-    JMP row
+    LDA e : BPL fits
+.shrink
+    \ x -= 1, so x^2 drops by 2x + 1 (of the new x)
+    DEC x : LDA x : ASL A : SEC : ADC e : STA e
+    BMI shrink
 .fits
     \ profile[dy] = x / 2 to the nearest, halves rounding down
     LDA x : ASL A : ADC #1 : LSR A : LSR A
     LDX dy : STA profile,X
     CPX disc_r : BEQ cols
-    \ dy^2 += 2dy + 1, dy += 1
-    TXA : ASL A : SEC : ADC dsq : STA dsq
-    LDA dsq+1 : ADC #0 : STA dsq+1
+    \ dy^2 grows by 2dy + 1: e += NOT(2dy) (the ASL clears carry)
+    TXA : ASL A : EOR #&FF : ADC e : STA e
     INC dy
     JMP row
 .cols
@@ -180,12 +139,10 @@ ZA_AUTO1 disc_r, disc_cx, disc_cy
     TXA
 .down
     CMP profile,Y : BEQ ok : BCC ok
-    DEY : JMP down
+    DEY : BPL down                              ; (always: profile[0] >= dx)
 .ok
     TYA : STA colspan,X
-    CPX profile : BEQ done
-    INX : JMP col
-.done
+    CPX profile : INX : BCC col                 ; up to dx = profile[0]
     RTS
 }
 
@@ -193,19 +150,14 @@ ZA_AUTO1 disc_r, disc_cx, disc_cy
 .umul8
 {
     ZA_AUTO1 lo, hi, m
-    STA m
-    LDA #0 : STA lo
-    TXA : BEQ zero
-    DEX : STX hi                ; add (X-1) + carry-in trick: shift-add
+    STA m : STX hi
     LDA #0
     LDX #8
 .bit
-    LSR m : BCC @+ : ADC hi : .@
+    \ Shift-add; the eight RORs push every old bit of lo out.
+    LSR m : BCC @+ : CLC : ADC hi : .@
     ROR A : ROR lo
     DEX : BNE bit
-    STA hi
-    RTS
-.zero
     STA hi
     RTS
 }
