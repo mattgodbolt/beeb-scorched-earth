@@ -4,7 +4,14 @@ A port-in-spirit of Wendell Hicken's *Scorched Earth* ("The Mother of All
 Games", PC shareware, 1991) to a 32K BBC Model B with a disc drive, in 6502
 assembly.
 
-![In play](docs/img/play.png)
+### ▶ [**Play it in your browser**](https://bbc.xania.org/?disc=https://raw.githubusercontent.com/mattgodbolt/beeb-scorched-earth/main/scorched-earth.ssd&autoboot)
+
+That link hands [jsbeeb](https://github.com/mattgodbolt/jsbeeb) the disc
+image straight from this repository and boots it on a BBC B.
+
+![Title and setup](docs/img/title.png)
+
+![A Funky Bomb going off](docs/img/play.png)
 
 Two to six tanks on a random landscape. Take turns to set your turret's
 angle and power, allow for the wind, and fire. Dirt falls, tanks fall,
@@ -13,9 +20,10 @@ in the shop between rounds on bigger and sillier weapons.
 
 ## Playing it
 
-Build it (below), or take `build/scorch.ssd`, and boot it in any BBC
-Micro emulator with SHIFT+BREAK, or `*RUN SCORCH` after `MODE 2` (the
-`!BOOT` file does the `MODE 2` for you; see "How it works").
+[Play it in your browser](https://bbc.xania.org/?disc=https://raw.githubusercontent.com/mattgodbolt/beeb-scorched-earth/main/scorched-earth.ssd&autoboot),
+or put [`scorched-earth.ssd`](scorched-earth.ssd) in any BBC Micro emulator
+(or on a real disc) and SHIFT+BREAK. To start it by hand, type `MODE 2`
+then `*RUN SCORCH`: the game must be loaded in MODE 2 (see "How it works").
 
 ### Setup
 
@@ -58,6 +66,8 @@ round's walls:
 | RUBBER | shots bounce |
 | CONCRETE | shots burst on the walls |
 
+![Talking tanks](docs/img/talk.png)
+
 ### The shop
 
 Everyone starts with nothing but unlimited Baby Missiles. Damage earns
@@ -78,6 +88,8 @@ bank earns about 5% a round. Prices and bundle sizes are the original's.
 | Parachute | opens by itself when you fall far enough to hurt |
 | Battery | +10 health (press B) |
 | Shield | soaks up 60 points of damage (press S) |
+
+![The shop](docs/img/shop.png)
 
 Computer players talk, as they did in the original: lines from its
 TALK1.CFG when they fire and TALK2.CFG when anyone dies.
@@ -102,6 +114,7 @@ git clone --recurse-submodules https://github.com/waitingforvsync/baron ../baron
 cmake -S ../baron -B ../baron/build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build ../baron/build
 make            # -> build/scorch.ssd
+make ship       # -> scorched-earth.ssd, the disc the play link uses
 ```
 
 ## Testing

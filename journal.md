@@ -87,3 +87,39 @@ What worked, what I discovered, what went wrong — kept as I go.
   misreading the log (the values at entry are the *previous* shot's).
 - Debug-script pitfall: pressing a key before the game has finished
   drawing the first round silently does nothing. The play scripts wait 5s.
+
+## The meta-game, and what it broke
+
+- **A MODE change wiped the top of the game.** Once the code grew past
+  &3000, `init_system`'s `VDU 22,2` (after the loader had copied the code
+  down) cleared it: the game hit a BRK in the middle of `draw_status`. Found
+  by breaking on OS 1.20's BRK path (&DC27) and reading the return address
+  off the stack - it pointed at code that should never have been a BRK.
+  Fix: `!BOOT` says `MODE 2` in BASIC *before* `*RUN`, with the palette
+  blacked out so nobody sees the file pass through screen memory, and the
+  game sets the palette itself.
+- **OS text still works, two rows up.** The OS believes MODE 2 starts at
+  &3000; the CRTC shows from &3A00 now. OS row r is our row r-2. Good
+  enough for the big multicoloured title.
+- **Shop lines came out black.** `can_afford` returns in carry but
+  clobbers X, and X was holding the colour. Same family as the setup
+  screen printing garbage after names (`JSR draw_char : JSR draw_char`
+  with A trashed in between). Rule: after a JSR, assume A, X and Y are
+  gone unless the routine's comment promises otherwise.
+- **Setup's DOWN key never worked**: a bounds check computed `sel - 2`,
+  which is 255 for the first two lines.
+- **Straight-line landscapes were not a bug.** The emulator's boot is
+  deterministic, so the "random" seed was the same every run, and it had
+  rolled the smallest roughness, which halves away to nothing. The
+  minimum roughness went up, and the seed now has the setup screen's
+  vsync count mixed in so real machines differ game to game.
+- **The ZP allocator objects to `JMP` back into a caller**: ESCAPE first
+  jumped from inside `aim` to `main.game` after resetting the stack. Baron
+  read that as recursion (correctly, as far as its model goes). `aim` now
+  returns carry set and `main` does the jump.
+- Code space went 3.8K, 2.7K, 1.0K, 287, 160 bytes free as features
+  landed; dropping one more screen row (240 to 232 lines) bought 640.
+- `make test` (four Spoilers/Cyborgs, three rounds) and a weapons
+  gallery script (save_state once, restore it per weapon, poke the
+  weapon and aim, fire) are the regression checks. save_state/restore
+  makes per-weapon tests take seconds instead of a fresh boot each.

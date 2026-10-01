@@ -3,13 +3,14 @@
 #   make          assemble build/scorch.ssd
 #   make run      boot it in jsbeeb and grab a screenshot
 #   make test     four computer players fight a 3-round game; fails on a BRK
+#   make ship     copy the built disc to scorched-earth.ssd, the one the README links
 
 BARON   ?= $(firstword $(wildcard ../baron/build/src/baron) baron)
 TARGET   = build/scorch.ssd
 SYMBOLS  = build/symbols.json
 SOURCES  = $(wildcard src/*.6502)
 
-.PHONY: all run test clean
+.PHONY: all run test ship clean
 
 all: $(TARGET)
 
@@ -26,6 +27,9 @@ run: $(TARGET)
 
 test: $(TARGET)
 	node tools/soak.mjs 3 6
+
+ship: $(TARGET)
+	cp $(TARGET) scorched-earth.ssd
 
 clean:
 	rm -rf build
