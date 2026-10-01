@@ -1,3 +1,4 @@
 build/
 shots/
 node_modules
+.claude/
