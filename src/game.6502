@@ -9,20 +9,11 @@ MAX_WIND = 20
 
 .main
 {
-    JSR init_system
-    JSR init_tables
-    JSR snd_init
     \ Seed from the system VIA timer: it has been running since power on.
     LDA &FE44 : STA seed
     LDA &FE45 : ORA #1 : STA seed+1
     LDA #2 : STA num_players
     LDA #10 : STA num_rounds
-    LDX #MAXP-1
-.defaults
-    LDA player_colours,X : STA tank_colour,X
-    LDA #SPOILER : STA tank_type,X
-    DEX : BPL defaults
-    LDA #HUMAN : STA tank_type
 .game
     JSR setup
     \ However long the setup took is as good a random seed as any.

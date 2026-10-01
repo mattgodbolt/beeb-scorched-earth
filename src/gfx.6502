@@ -3,32 +3,6 @@
 \ Nothing here goes through the OS.
 \ ***************************************************************************
 
-\ Build the row and column address tables.
-.init_tables
-{
-    ZA_AUTO2 base
-    LDA #LO(screen) : STA base
-    LDA #HI(screen) : STA base+1
-    LDY #0
-.row
-    TYA : AND #7 : CLC : ADC base : STA rowlo,Y
-    LDA base+1 : ADC #0 : STA rowhi,Y
-    INY : BEQ cols
-    TYA : AND #7 : BNE row
-    LDA base : CLC : ADC #LO(640) : STA base     ; next character row
-    LDA base+1 : ADC #HI(640) : STA base+1
-    JMP row
-.cols
-    LDX #0
-.col
-    TXA : AND #&FE : STA coloff_lo,X            ; (x >> 1) * 8 = (x & ~1) * 4
-    LDA #0 : STA coloff_hi,X
-    ASL coloff_lo,X : ROL coloff_hi,X
-    ASL coloff_lo,X : ROL coloff_hi,X
-    INX : CPX #SCREEN_W : BNE col
-    RTS
-}
-
 \ Plot one pixel. X = x, Y = y, A = colour byte (both pixels; only the half
 \ that belongs to x is used). Preserves X and Y.
 .plot

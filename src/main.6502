@@ -53,7 +53,15 @@ SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filena
     PRINT "code &", ~start, "-&", ~code_end, " (", screen - code_end, " bytes free)"
     ENDSECTION
 
-\ Runs at &1900+, before the copy. Nothing in here may be needed afterwards.
+    \ The start-up code, carried here and run from skyrow/dirtrow (see
+    \ boot.6502), so it never takes up code space.
+    .boot_payload
+    SECTION Startup, org = skyrow, guard = skyrow + 512
+    INCLUDE "boot.6502"
+    ENDSECTION
+
+\ Runs in screen memory, after the payload. Nothing in here may be needed
+\ afterwards.
 .loader
     LDX #LO(tape) : LDY #HI(tape) : JSR oscli
     LDX #HI(code_end - start + &FF)
@@ -63,7 +71,12 @@ SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filena
     INY : BNE copy
     INC copy+2 : INC copy+5
     DEX : BNE copy
-    JMP start
+    \ Two whole pages: the Startup guard keeps boot.6502 inside them.
+.copy_boot
+    LDA boot_payload,Y : STA boot,Y
+    LDA boot_payload+256,Y : STA boot+256,Y
+    INY : BNE copy_boot
+    JMP boot
 .tape
     EQUS "TAPE", 13
 ENDSECTION

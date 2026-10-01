@@ -9,34 +9,6 @@
 \ 3 the shell's whistle - so the whistle never cuts off anything else.
 \ ***************************************************************************
 
-\ Envelopes. OSWORD 8 takes them as they are: number, step length in
-\ centiseconds (+&80: the pitch envelope does not repeat), three pitch
-\ changes and their step counts, then attack/decay/sustain/release rates
-\ and the attack and decay target levels (126 is full volume).
-.snd_init
-{
-    LDA #0
-.loop
-    PHA
-    CLC : ADC #LO(envs) : TAX
-    LDA #HI(envs) : ADC #0 : TAY
-    LDA #8 : JSR osword
-    PLA : CLC : ADC #14
-    CMP #envs_end - envs : BNE loop
-    RTS
-.envs
-    \ 1: boom. Instant attack, a fall to a long, slowly fading body that
-    \ lasts as long as the note does, then a quick tail.
-    EQUB 1, 2,    0, 0, 0,   0, 0, 0,   126, -4, -1, -8,  126, 90
-    \ 2: slide. Pitch falls one step every 2cs and never comes back up.
-    EQUB 2, &82, -1, 0, 0, 120, 0, 0,   126, -1,  0, -4,  110, 90
-    \ 3: blip. A struck note that dies away.
-    EQUB 3, 1,    0, 0, 0,   0, 0, 0,   126, -8, -1, -10, 126, 80
-    \ 4: whistle. Steady and quieter, so it sits under everything else.
-    EQUB 4, 1,    0, 0, 0,   0, 0, 0,    70, -1,  0, -10,  70, 60
-.envs_end
-}
-
 \ The OSWORD 7 block. Only the even bytes are ever written.
 .sblk   EQUW 0, 0, 0, 0
 
