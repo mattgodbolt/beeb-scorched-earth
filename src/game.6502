@@ -1,0 +1,541 @@
+\ ***************************************************************************
+\ The game: rounds, turns, aiming, firing.
+\ ***************************************************************************
+
+ZA_AUTO1 num_players
+ZA_AUTO1 wind               ; signed, -MAX_WIND..MAX_WIND (shown as x10)
+MAX_WIND = 20
+
+.main
+{
+    JSR init_system
+    JSR init_tables
+    JSR snd_init
+    \ Seed from the system VIA timer: it has been running since power on.
+    LDA &FE44 : STA seed
+    LDA &FE45 : ORA #1 : STA seed+1
+    LDA #2 : STA num_players
+    LDA #10 : STA num_rounds
+    LDX #MAXP-1
+.defaults
+    LDA player_colours,X : STA tank_colour,X
+    LDA #SPOILER : STA tank_type,X
+    DEX : BPL defaults
+    LDA #HUMAN : STA tank_type
+.game
+    JSR setup
+    \ However long the setup took is as good a random seed as any.
+    LDA vsyncs : EOR seed : STA seed
+    \ Everyone starts with nothing but Baby Missiles.
+    LDX #MAXP*NITEMS-1 : LDA #0
+.empty
+    STA inv,X : DEX : BPL empty
+    LDX #MAXP*3-1
+.broke
+    STA tank_money,X : DEX : BPL broke
+    LDX #MAXP-1
+.fresh
+    STA tank_score,X : STA tank_weapon,X : STA tank_tries,X
+    DEX : BPL fresh
+    STA round_no
+.round
+    INC round_no
+    JSR new_round
+    \ Who goes first rotates round by round.
+    LDA round_no
+.first
+    SEC : SBC num_players : BCS first
+    ADC num_players : STA cur
+.turn
+    LDX cur : LDA tank_alive,X : BEQ next
+    STX attacker
+    LDA tank_type,X : BEQ human
+    JSR ai_turn
+    JMP shoot
+.human
+    JSR aim
+    BCC shoot
+    JMP game
+.shoot
+    JSR fire
+    JSR count_alive : CMP #2 : BCC round_over
+.next
+    INC cur : LDA cur : CMP num_players : BNE turn
+    LDA #0 : STA cur : JMP turn
+.round_over
+    \ The last tank standing scores and is paid; then the scores.
+    LDA #80 : JSR wait_frames
+    LDX #&FF
+    LDY #0
+.find
+    LDA tank_alive,Y : BEQ @+ : TYA : TAX : .@
+    INY : CPY num_players : BNE find
+    TXA : PHA : BMI nowin
+    INC tank_score,X
+    LDA #20 : JSR five_hundreds
+    PLA : PHA : TAX : JSR money_add
+    JSR snd_fanfare
+.nowin
+    PLA : JSR scores
+    LDA round_no : CMP num_rounds : BEQ over
+    JSR interest
+    JSR shop
+    JMP round
+.over
+    JSR champion
+    JMP game
+}
+
+\ How many tanks are alive? -> A
+.count_alive
+{
+    LDX #0 : LDA #0
+.loop
+    LDY tank_alive,X : BEQ @+ : CLC : ADC #1 : .@
+    INX : CPX num_players : BNE loop
+    RTS
+}
+
+\ A fresh landscape, wind and walls, and everyone back at full health.
+.new_round
+{
+    JSR rand : AND #63 : ORA #31 : STA terrain_amp
+    JSR gen_terrain
+    JSR make_colours
+    \ wind: -MAX_WIND..MAX_WIND, signed
+.windpick
+    JSR rand : AND #63 : CMP #MAX_WIND*2+1 : BCS windpick
+    SEC : SBC #MAX_WIND : STA wind
+    JSR set_wind
+    JSR rand : AND #3 : STA wall_type
+    JSR place_tanks
+    JSR clear_status
+    JSR draw_terrain
+    JSR draw_tanks
+    RTS
+}
+
+\ wind_acc = wind * 6 (per-frame velocity change, 1/65536 px/substep).
+.set_wind
+{
+    LDA wind : STA wind_acc
+    LDA #0 : STA wind_acc+1
+    LDA wind : BPL @+ : LDA #&FF : STA wind_acc+1 : .@
+    \ x6 = x2 + x4
+    ASL wind_acc : ROL wind_acc+1
+    LDA wind_acc : STA t : LDA wind_acc+1 : STA t+1
+    ASL wind_acc : ROL wind_acc+1
+    LDA wind_acc : CLC : ADC t : STA wind_acc
+    LDA wind_acc+1 : ADC t+1 : STA wind_acc+1
+    RTS
+.t EQUW 0
+}
+
+\ Spread the tanks out, flatten a pad under each, full health.
+.place_tanks
+{
+    ZA_AUTO1 slot, width, x
+    \ slot width = 160 / num_players
+    LDA #SCREEN_W : STA div16.n : LDA #0 : STA div16.n+1
+    LDA num_players : JSR div16
+    LDA div16.n : STA width
+    \ Shuffle who gets which slot.
+    LDX #MAXP-1
+.ident
+    TXA : STA order,X : DEX : BPL ident
+    LDX num_players : DEX
+.shuffle
+    JSR rand : AND #7 : CMP num_players : BCS shuffle
+    TAY : LDA order,X : PHA : LDA order,Y : STA order,X : PLA : STA order,Y
+    DEX : BNE shuffle
+    LDA #0 : STA slot
+.tank
+    \ x = slot * width + width / 2 + jitter (+-width/4)
+    LDA slot : LDX width : JSR umul8
+    LDA width : LSR A : CLC : ADC umul8.lo : STA x
+    \ jitter: x += rand mod (width/2) - width/4
+    LDA width : LSR A : STA t
+    JSR rand
+.mod
+    CMP t : BCC @+ : SBC t : JMP mod : .@
+    CLC : ADC x : STA x
+    LDA t : LSR A : STA t
+    LDA x : SEC : SBC t : STA x
+.nojit
+    LDA x : CMP #TANK_HALF+1 : BCS @+ : LDA #TANK_HALF+1 : STA x : .@
+    LDA x : CMP #SCREEN_W-TANK_HALF-1 : BCC @+ : LDA #SCREEN_W-TANK_HALF-2 : STA x : .@
+    LDY slot : LDX order,Y
+    LDA x : STA tank_x,X
+    \ flatten the pad and stand on it
+    TAY : LDA ground,Y : STA t
+    SEC : SBC #1 : STA tank_y,X
+    LDA #1 : STA tank_alive,X
+    LDA #100 : STA tank_health,X
+    LDA #0 : STA tank_shield,X
+    \ aim at the middle of the screen, half power
+    LDA #HI(500) : STA tank_power_hi,X
+    LDA #LO(500) : STA tank_power_lo,X
+    LDA #45
+    LDY x : CPY #SCREEN_W/2 : BCC @+ : LDA #135 : .@
+    STA tank_angle,X
+    LDA x : SEC : SBC #TANK_HALF : TAY
+    LDA t
+    FOR i = 0..2*TANK_HALF
+        STA ground+i,Y
+    NEXT
+    INC slot : LDA slot : CMP num_players : BEQ @+ : JMP tank : .@
+    RTS
+.t EQUB 0
+.order SKIP MAXP
+}
+
+\ ---------------------------------------------------------------------------
+\ Aiming. Left/right turn the turret, up/down change power (SHIFT for
+\ fine steps), SPACE or RETURN fires. Returns carry set if ESCAPE was
+\ pressed instead.
+
+.aim
+{
+    ZA_AUTO1 held
+    LDA #0 : STA held
+    JSR clamp_power
+    JSR draw_status
+    JSR draw_tank
+.frame
+    JSR wait_vsync
+    LDX #K_LEFT : JSR key_down : JNE left
+    LDX #K_RIGHT : JSR key_down : JNE right
+    LDX #K_UP : JSR key_down : JNE up
+    LDX #K_DOWN : JSR key_down : JNE down
+    LDA #0 : STA held
+    LDX #K_TAB : JSR key_down : BNE tab
+    LDX #K_ESCAPE : JSR key_down : JNE quit
+    LDX #K_B : JSR key_down : BNE battery
+    LDX #K_S : JSR key_down : BNE shield
+    LDX #K_SPACE : JSR key_down : BNE fire
+    LDX #K_RETURN : JSR key_down : BNE fire
+    JMP frame
+.fire
+    CLC
+    RTS
+.quit
+    SEC                                         ; ESCAPE: give up the game
+    RTS
+.tab
+    JSR next_weapon
+    JSR draw_weapon
+.release
+    JSR wait_vsync
+    LDA #121 : LDX #0 : JSR osbyte              ; any key still down?
+    CPX #&FF : BNE release
+    JMP frame
+.battery
+    \ +10 health, up to 100
+    LDA #I_BATTERY : JSR inv_index : LDA inv,X : BEQ release
+    LDY cur : LDA tank_health,Y : CMP #100 : BCS release
+    DEC inv,X
+    ADC #10 : CMP #101 : BCC @+ : LDA #100 : .@
+    STA tank_health,Y
+    JSR snd_click
+    JSR draw_status
+    JMP release
+.shield
+    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ release
+    LDY cur : LDA tank_shield,Y : BNE release
+    DEC inv,X
+    LDA #SHIELD_STRENGTH : STA tank_shield,Y
+    JSR snd_click
+    JSR draw_tank
+    JMP release
+.left
+    LDX cur : LDA tank_angle,X : CMP #180 : BCC @+ : JMP frame : .@
+    JSR erase_barrel
+    LDX cur : INC tank_angle,X
+    JMP turned
+.right
+    LDX cur : LDA tank_angle,X : JEQ frame
+    JSR erase_barrel
+    LDX cur : DEC tank_angle,X
+.turned
+    JSR draw_tank
+    JSR draw_angle
+    JMP frame
+.up
+    JSR power_step
+    LDX cur
+    LDA tank_power_lo,X : CLC : ADC power_step.step : STA tank_power_lo,X
+    LDA tank_power_hi,X : ADC #0 : STA tank_power_hi,X
+    JSR clamp_power
+    JSR draw_power
+    JMP frame
+.down
+    JSR power_step
+    LDX cur
+    LDA tank_power_lo,X : SEC : SBC power_step.step : STA tank_power_lo,X
+    LDA tank_power_hi,X : SBC #0 : STA tank_power_hi,X
+    BCS @+ : LDA #0 : STA tank_power_lo,X : STA tank_power_hi,X : .@
+    JSR draw_power
+    JMP frame
+}
+
+\ How far one frame of holding up/down moves the power: 1 with SHIFT,
+\ else 2, rising to 10 after half a second.
+.power_step
+{
+    LDA #1 : STA step
+    LDX #K_SHIFT : JSR key_down : BNE done
+    LDA #2 : STA step
+    INC aim.held
+    LDA aim.held : CMP #25 : BCC done
+    LDA #10 : STA step
+.done
+    RTS
+.step EQUB 0
+}
+
+\ Max power is ten times health.
+.clamp_power
+{
+    ZA_AUTO2 max
+    LDX cur
+    LDA tank_health,X : STA mul16.m : LDA #0 : STA mul16.m+1
+    LDA #10 : JSR mul16
+    LDX cur
+    LDA tank_power_lo,X : CMP mul16.r : LDA tank_power_hi,X : SBC mul16.r+1
+    BCC ok
+    LDA mul16.r : STA tank_power_lo,X
+    LDA mul16.r+1 : STA tank_power_hi,X
+.ok
+    RTS
+}
+
+\ ---------------------------------------------------------------------------
+\ Firing.
+
+.fire
+{
+    LDX cur : LDA tank_weapon,X : STA weapon
+    JSR use_weapon
+    \ Tracers leave a trail in the firer's colour; everything else is a
+    \ white dot.
+    LDA #0 : STA shot_trail
+    LDA #cbyte(C_WHITE) : STA shot_colour
+    LDX weapon : LDA item_kind,X : CMP #SK_TRACER : BNE @+
+    STA shot_trail
+    LDX cur : LDA tank_colour,X : TAX : LDA cbytes,X : STA shot_colour
+.@
+    LDX #MAXSH-1 : LDA #0
+.clear
+    STA sh_active,X : DEX : BPL clear
+    \ Computers sometimes have something to say first.
+    LDX cur : LDA tank_type,X : BEQ quiet
+    JSR rand : AND #3 : BNE quiet
+    JSR rand : AND #15 : CMP #ATTACK_LINES : BCS quiet
+    JSR say
+.quiet
+    JSR launch
+    JSR spawn_shell
+    JSR snd_fire
+    JSR fly_shells
+    JSR kill_dead
+    RTS
+}
+
+\ Tanks whose health has run out blow up - which may finish off others.
+.kill_dead
+{
+    ZA_AUTO1 shooter, i
+    LDA cur : STA shooter
+.again
+    LDA #0 : STA i
+.loop
+    LDX i : LDA tank_alive,X : BEQ next
+    LDA tank_health,X : BNE next
+    LDA #0 : STA tank_alive,X
+    \ A kill scores a point and $2500 - unless you killed yourself.
+    CPX attacker : BEQ suicide
+    LDX attacker : INC tank_score,X
+    LDA #5 : JSR five_hundreds
+    LDX attacker : JSR money_add
+.suicide
+    LDX i : STX cur
+    JSR rand : AND #15 : CMP #DEATH_LINES : BCC @+ : LSR A : .@
+    ADC #ATTACK_LINES : JSR say
+    JSR erase_tank
+    LDX i
+    LDA tank_x,X : STA disc_cx
+    LDA tank_y,X : SEC : SBC #2 : STA disc_cy
+    LDA #12 : STA expl_r
+    LDA #70 : STA blast_power
+    JSR snd_die
+    LDA shooter : STA cur
+    JSR explosion
+    JMP again
+.next
+    INC i : LDA i : CMP num_players : BNE loop
+    LDA shooter : STA cur
+    RTS
+}
+
+\ A blast at (disc_cx, disc_cy) of radius expl_r doing blast_power: the
+\ fireball, the damage, the crater, the dirt and tanks falling, and any
+\ tanks that die going up in turn.
+.explosion
+{
+    ZA_AUTO1 shooter
+    LDA cur : STA shooter
+    LDA expl_r : JSR snd_explode
+    JSR blast
+    JSR damage_tanks
+    LDA expl_r : STA disc_r
+    LDA #0 : STA fall_n
+    JSR carve
+    JSR draw_tanks
+    JSR run_falls
+    JSR draw_tanks
+    JSR drop_tanks
+    LDA shooter : STA cur
+    RTS
+}
+
+\ Tanks with nothing under them fall to whatever is highest beneath them.
+.drop_tanks
+{
+    ZA_AUTO1 land, i
+    LDA #0 : STA cur
+.tank
+    LDX cur : LDA tank_alive,X : BEQ next
+    \ land on the highest ground under the tank
+    LDA tank_x,X : SEC : SBC #TANK_HALF : TAY
+    LDA #FLOOR : STA land
+    LDA #2*TANK_HALF+1 : STA i
+.col
+    LDA ground,Y : CMP land : BCS @+ : STA land : .@
+    INY : DEC i : BNE col
+    DEC land                                    ; the row above it
+    LDA land : CMP tank_y,X : BEQ next : BCC next
+    SEC : SBC tank_y,X : STA i                  ; how far it falls
+.fall
+    JSR erase_tank
+    LDX cur : INC tank_y,X
+    JSR draw_tank
+    JSR wait_vsync
+    LDX cur : LDA tank_y,X : CMP land : BNE fall
+    \ A long fall hurts, unless a parachute opens.
+    LDA i : CMP #6 : BCC next
+    LDA #I_PARACHUTE : JSR inv_index : LDA inv,X : BEQ splat
+    DEC inv,X : JMP next
+.splat
+    LDA i : JSR hurt
+    JSR draw_tank
+.next
+    INC cur : LDA cur : CMP num_players : BNE tank
+    RTS
+}
+
+\ ---------------------------------------------------------------------------
+\ The status bar.
+
+.clear_status
+{
+    LDA #0 : STA rect_x0 : STA bg_y0
+    LDA #SCREEN_W-1 : STA rect_x1
+    LDA #TOP-1 : STA bg_y1
+    \ (the model is sky up here, and skyrow is black above TOP)
+    JMP repaint
+}
+
+.draw_status
+{
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #0 : STA text_x : LDA #2 : STA text_y
+    JSR print_inline : EQUS "POWER", 0
+    JSR draw_power
+    LDA #4*12 : STA text_x
+    JSR print_inline : EQUS "ANGLE", 0
+    JSR draw_angle
+    \ name, in the tank's colour
+    LDX cur : LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDA #4*24 : STA text_x
+    JSR print_inline : EQUS "PLAYER ", 0
+    LDA cur : CLC : ADC #49 : JSR draw_char
+    \ wind
+    LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
+    LDA #4*33 : STA text_x
+    LDA wind : BEQ calm : BPL east
+    JSR print_inline : EQUS "<", 0
+    LDA wind : EOR #&FF : CLC : ADC #1 : JSR wind_num
+    JMP line2
+.east
+    JSR wind_num
+    JSR print_inline : EQUS ">", 0
+    JMP line2
+.calm
+    JSR print_inline : EQUS "CALM ", 0
+.line2
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    JSR draw_weapon
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #4*21 : STA text_x
+    JSR print_inline : EQUS "HEALTH", 0
+    LDX cur : LDA tank_health,X : LDX #4 : JSR print_byte
+    \ the walls, in the original's colours
+    LDX wall_type : LDA wall_colours,X : LDX #C_BLACK : JSR set_colours
+    LDA #4*32 : STA text_x
+    LDA wall_type
+    LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_nth
+.wind_num
+    \ wind is shown x10, as the original's 0-200 scale
+    STA mul16.m : LDA #0 : STA mul16.m+1
+    LDA #10 : JSR mul16
+    LDA mul16.r : STA num : LDA mul16.r+1 : STA num+1 : LDA #0 : STA num+2
+    LDA #3 : JMP print_num
+}
+
+.draw_power
+{
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #4*6 : STA text_x : LDA #2 : STA text_y
+    LDX cur
+    LDA tank_power_lo,X : STA num
+    LDA tank_power_hi,X : STA num+1
+    LDA #0 : STA num+2
+    LDA #4 : JMP print_num
+}
+
+.wall_names
+    EQUS "    OPEN", 0, "    WRAP", 0, "  RUBBER", 0, "CONCRETE", 0
+.wall_colours
+    EQUB C_WHITE, C_YELLOW, C_RED, C_WHITE
+
+\ The selected weapon and how many are left.
+.draw_weapon
+{
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #0 : STA text_x : LDA #9 : STA text_y
+    LDX cur : LDA tank_weapon,X : JSR print_item_name
+.pad
+    LDA #32 : JSR draw_char
+    LDA text_x : CMP #4*16 : BCC pad
+    LDX cur : LDA tank_weapon,X : BEQ lots
+    JSR inv_index : LDA inv,X : LDX #2 : JMP print_byte
+.lots
+    JSR print_inline : EQUS "--", 0
+    RTS
+}
+
+\ The angle as the original shows it: 0-90 from the horizontal, with an
+\ arrow for the side it faces.
+.draw_angle
+{
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #4*18 : STA text_x : LDA #2 : STA text_y
+    LDX cur : LDA tank_angle,X
+    CMP #91 : BCS left
+    LDX #3 : JSR print_byte
+    LDA #62 : JMP draw_char           ; >
+.left
+    EOR #&FF : SEC : ADC #180
+    LDX #3 : JSR print_byte
+    LDA #60 : JMP draw_char           ; <
+}

@@ -1,0 +1,471 @@
+\ ***************************************************************************
+\ Between the shooting: title and setup, the shop, the scores, and money.
+\ These screens read the keyboard through OSRDCH (with *FX 4,1 the cursor
+\ keys arrive as codes 136-139) - they wait for people, so speed is no
+\ object.
+\ ***************************************************************************
+
+osrdch    = &FFE0
+KEY_LEFT  = 136
+KEY_RIGHT = 137
+KEY_DOWN  = 138
+KEY_UP    = 139
+KEY_RET   = 13
+
+ZA_AUTO1 num_rounds, round_no, menu_sel
+
+\ Black out the whole screen.
+.cls
+{
+    ZA_AUTO2 ptr
+    LDA #LO(screen) : STA ptr
+    LDA #HI(screen) : STA ptr+1
+    LDA #0 : TAY
+.loop
+    STA (ptr),Y
+    INY : BNE loop
+    INC ptr+1 : BPL loop
+    RTS
+}
+
+\ Wait for a keypress (after throwing away any typed ahead) -> A.
+.get_key
+{
+    LDA #15 : LDX #1 : JSR osbyte
+    JSR osrdch
+    PHA : JSR snd_click : PLA
+    RTS
+}
+
+\ Move the text cursor to column A, line X (lines are 6 rows apart).
+.at
+{
+    ASL A : ASL A : STA text_x
+    TXA : ASL A : STA text_y
+    ASL A : ADC text_y : STA text_y             ; x6
+    RTS
+}
+
+\ Print player X's name: "PLAYER 1", or the personality for a computer.
+.print_name
+{
+    STX t
+    LDA tank_type,X
+    LDX #LO(type_names) : LDY #HI(type_names)
+    JSR print_nth
+    LDA #32 : JSR draw_char
+    LDA t : CLC : ADC #49 : JMP draw_char
+.t EQUB 0
+}
+.type_names
+    EQUS "PLAYER", 0, "MORON", 0, "SHOOTER", 0, "TOSSER", 0, "SPOILER", 0, "CYBORG", 0
+
+\ Print player X's money in 7 columns, with a dollar sign.
+.print_money
+{
+    TXA : STA t : ASL A : ADC t : TAX           ; x3
+    LDA tank_money,X : STA num
+    LDA tank_money+1,X : STA num+1
+    LDA tank_money+2,X : STA num+2
+    LDA #36 : JSR draw_char            ; $
+    LDA #6 : JMP print_num
+.t EQUB 0
+}
+
+\ Player X gains num dollars.
+.money_add
+{
+    STX t : TXA : ASL A : ADC t : TAX
+    LDA tank_money,X : CLC : ADC num : STA tank_money,X
+    LDA tank_money+1,X : ADC num+1 : STA tank_money+1,X
+    LDA tank_money+2,X : ADC num+2 : STA tank_money+2,X
+    RTS
+.t EQUB 0
+}
+
+\ Player X pays num dollars if they can: carry set if paid, clear (and
+\ nothing taken) if not.
+.money_pay
+{
+    STX t : TXA : ASL A : ADC t : TAX
+    LDA tank_money,X : SEC : SBC num : STA t
+    LDA tank_money+1,X : SBC num+1 : STA t+1
+    LDA tank_money+2,X : SBC num+2 : BCC poor
+    STA tank_money+2,X
+    LDA t+1 : STA tank_money+1,X
+    LDA t : STA tank_money,X
+.poor
+    RTS
+.t EQUW 0
+}
+
+\ num = A * 50: what a point of damage pays.
+.damage_pay
+{
+    STA mul16.m : LDA #0 : STA mul16.m+1
+    LDA #50 : JSR mul16
+    LDA mul16.r : STA num : LDA mul16.r+1 : STA num+1
+    LDA #0 : STA num+2
+    RTS
+}
+
+\ num = A * 500.
+.five_hundreds
+{
+    LDX #LO(500) : STX mul16.m : LDX #HI(500) : STX mul16.m+1
+    JSR mul16
+    LDA mul16.r : STA num : LDA mul16.r+1 : STA num+1 : LDA mul16.r+2 : STA num+2
+    RTS
+}
+
+\ ---------------------------------------------------------------------------
+\ Title and setup.
+
+.title_text
+    EQUS "SCORCHED EARTH"
+.title_end
+
+\ The OS still thinks the screen starts at &3000, so its text row r lands
+\ on our row r-2. Big letters, one colour each.
+.draw_title
+{
+    LDA #31 : JSR oswrch
+    LDA #3 : JSR oswrch : JSR oswrch
+    LDX #0
+.loop
+    TXA : AND #7 : CMP #6 : BCC @+ : SBC #5 : .@
+    CLC : ADC #1 : PHA
+    LDA #17 : JSR oswrch : PLA : JSR oswrch     ; COLOUR 1-6
+    LDA title_text,X : JSR oswrch
+    INX : CPX #title_end - title_text : BNE loop
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #8 : LDX #4 : JSR at
+    JSR print_inline : EQUS "THE MOTHER OF ALL GAMES", 0
+    LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
+    LDA #7 : LDX #37 : JSR at
+    JSR print_inline : EQUS "AFTER WENDELL HICKEN 1991", 0
+    RTS
+}
+
+\ The setup screen: players, rounds and who is playing. Returns when
+\ SPACE or RETURN is pressed.
+.setup
+{
+    ZA_AUTO1 i
+    JSR cls
+    JSR draw_title
+    LDA #0 : STA menu_sel
+.redraw
+    LDA #C_YELLOW : LDX #C_BLACK : JSR set_colours
+    LDA #7 : LDX #8 : JSR at
+    JSR print_inline : EQUS "PLAYERS ", 0
+    LDA num_players : LDX #2 : JSR print_byte
+    LDA #7 : LDX #10 : JSR at
+    JSR print_inline : EQUS "ROUNDS  ", 0
+    LDA num_rounds : LDX #2 : JSR print_byte
+    LDA #0 : STA i
+.player
+    LDA i : ASL A : ADC #12 : TAX : LDA #7 : JSR at
+    LDX i : CPX num_players : BCS blank
+    LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDX i : JSR print_name
+    JSR print_inline : EQUS "  ", 0
+    JMP pnext
+.blank
+    JSR print_inline : EQUS "           ", 0
+.pnext
+    INC i : LDA i : CMP #MAXP : BNE player
+    \ the marker
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #0 : STA i
+.marker
+    LDA i : JSR menu_line : LDA #5 : JSR at
+    LDA #32 : LDX i : CPX menu_sel : BNE @+ : LDA #62 : .@
+    JSR draw_char
+    INC i : LDA i : CMP #MAXP+2 : BNE marker
+    LDA #4 : LDX #26 : JSR at
+    JSR print_inline : EQUS "UP/DOWN CHOOSE  LEFT/RIGHT CHANGE", 0
+    LDA #11 : LDX #28 : JSR at
+    JSR print_inline : EQUS "SPACE TO START", 0
+.key
+    JSR get_key
+    CMP #32 : BEQ go
+    CMP #KEY_RET : BEQ go
+    LDX menu_sel
+    CMP #KEY_UP : BNE @+ : DEX : BMI key : STX menu_sel : JMP redraw : .@
+    CMP #KEY_DOWN : BNE @+
+    LDA num_players : CLC : ADC #2 : STA i      ; items: 2 settings + players
+    INX : CPX i : BCS key
+    STX menu_sel : JMP redraw : .@
+    CMP #KEY_LEFT : BEQ change
+    CMP #KEY_RIGHT : BNE key
+    LDY #1 : BNE adjust
+.change
+    LDY #&FF
+.adjust
+    \ Y = +1 or -1 to the selected setting
+    STY i
+    CPX #0 : BNE rounds
+    LDA num_players : CLC : ADC i
+    CMP #2 : BCC key : CMP #MAXP+1 : BCS key
+    STA num_players : JMP redraw
+.rounds
+    CPX #1 : BNE type
+    LDA num_rounds : CLC : ADC i
+    BEQ key : CMP #100 : BCS key
+    STA num_rounds : JMP redraw
+.type
+    LDA tank_type-2,X : CLC : ADC i
+    BPL @+ : LDA #NTYPES-1 : .@
+    CMP #NTYPES : BCC @+ : LDA #0 : .@
+    STA tank_type-2,X
+    JMP redraw
+.go
+    RTS
+}
+
+\ The text line for setup item A -> X.
+.menu_line
+    ASL A : ADC #8 : TAX : RTS
+
+\ ---------------------------------------------------------------------------
+\ The shop. Players take turns; the computers just buy.
+
+.shop
+{
+    ZA_AUTO1 i
+    LDA #0 : STA cur
+.player
+    LDX cur : LDA tank_type,X : BEQ human
+    JSR ai_shop
+    JMP next
+.human
+    JSR shop_human
+.next
+    INC cur : LDA cur : CMP num_players : BNE player
+    RTS
+}
+
+.shop_human
+{
+    ZA_AUTO1 i
+    JSR cls
+    LDA #1 : STA menu_sel
+    LDX cur : LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDA #1 : LDX #1 : JSR at
+    LDX cur : JSR print_name
+    JSR print_inline : EQUS " GOES SHOPPING", 0
+    LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
+    LDA #1 : LDX #3 : JSR at
+    JSR print_inline : EQUS "ITEM             QTY  PRICE OWNED", 0
+    LDA #5 : LDX #26 : JSR at
+    JSR print_inline : EQUS "RETURN BUYS   SPACE TO FIGHT", 0
+    LDA #1 : STA i
+.all
+    LDA i : JSR shop_line
+    INC i : LDA i : CMP #NITEMS : BNE all
+.money
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #31 : LDX #1 : JSR at
+    LDX cur : JSR print_money
+.key
+    JSR get_key
+    CMP #32 : BEQ done
+    LDX menu_sel
+    CMP #KEY_UP : BNE notup
+    CPX #1 : BEQ key
+    DEC menu_sel : JMP moved
+.notup
+    CMP #KEY_DOWN : BNE notdown
+    CPX #NITEMS-1 : BEQ key
+    INC menu_sel
+.moved
+    TXA : JSR shop_line                         ; un-highlight the old line
+    LDA menu_sel : JSR shop_line
+    JMP key
+.notdown
+    CMP #KEY_RET : BNE key
+    LDA menu_sel : JSR buy : BCC key
+    LDA menu_sel : JSR shop_line
+    JMP money
+.done
+    RTS
+}
+
+\ Draw shop line A (an item): highlighted if selected, blue if it is out
+\ of reach.
+.shop_line
+{
+    ZA_AUTO1 item
+    STA item
+    LDX #C_YELLOW : CMP menu_sel : BEQ colour
+    LDA item : JSR price : LDX cur : JSR can_afford
+    LDX #C_WHITE : BCS colour
+    LDX #C_BLUE
+.colour
+    TXA : LDX #C_BLACK : JSR set_colours
+    LDA item : CLC : ADC #4 : TAX : LDA #1 : JSR at
+    LDA item : JSR print_item_name
+.pad
+    LDA #32 : JSR draw_char
+    LDA text_x : CMP #4*18 : BCC pad
+    LDX item : LDA item_bundle,X : LDX #2 : JSR print_byte
+    LDA #32 : JSR draw_char
+    LDA item : JSR price : LDA #6 : JSR print_num
+    LDA #32 : JSR draw_char : JSR draw_char
+    LDA item : JSR inv_index : LDA inv,X : LDX #3 : JMP print_byte
+}
+
+\ num = the price of item A.
+.price
+{
+    TAX
+    LDA item_price_lo,X : STA num
+    LDA item_price_hi,X : STA num+1
+    LDA #0 : STA num+2
+    RTS
+}
+
+\ Carry set if player X has num dollars.
+.can_afford
+{
+    STX t : TXA : ASL A : ADC t : TAX
+    LDA tank_money,X : CMP num
+    LDA tank_money+1,X : SBC num+1
+    LDA tank_money+2,X : SBC num+2
+    RTS
+.t EQUB 0
+}
+
+\ Player `cur` buys a bundle of item A if they can afford it and have
+\ room for it. Carry set if they did.
+.buy
+{
+    STA t
+    JSR inv_index : LDA inv,X : CMP #99 : BCS no
+    LDA t : JSR price
+    LDX cur : JSR money_pay : BCC no
+    LDA t : JSR inv_index
+    LDY t : LDA inv,X : CLC : ADC item_bundle,Y
+    CMP #99 : BCC @+ : LDA #99 : .@
+    STA inv,X
+    SEC
+    RTS
+.no
+    CLC
+    RTS
+.t EQUB 0
+}
+
+\ A computer player goes shopping: a dozen goes at picking something it
+\ likes, buying it when it can.
+.ai_shop
+{
+    LDA #12 : STA tries
+.try
+    JSR rand : AND #15 : CMP #ai_likes_end - ai_likes : BCS next
+    TAX : LDA ai_likes,X : JSR buy
+.next
+    DEC tries : BNE try
+    RTS
+.tries EQUB 0
+}
+.ai_likes
+    EQUB 1, 1, 2, 3, 4, 5, 6, 7, 10, 11, I_PARACHUTE, I_BATTERY, I_SHIELD
+.ai_likes_end
+
+\ ---------------------------------------------------------------------------
+\ Scores.
+
+\ Show the scores after round_no. A = the winner, or &FF for nobody.
+.scores
+{
+    ZA_AUTO1 i, winner
+    STA winner
+    JSR cls
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #13 : LDX #3 : JSR at
+    JSR print_inline : EQUS "ROUND ", 0
+    LDA round_no : LDX #2 : JSR print_byte
+    JSR print_inline : EQUS " OF ", 0
+    LDA num_rounds : LDX #2 : JSR print_byte
+    LDA #12 : LDX #6 : JSR at
+    LDX winner : BMI nobody
+    LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDX winner : JSR print_name
+    JSR print_inline : EQUS " WINS", 0
+    JMP table
+.nobody
+    JSR print_inline : EQUS "NOBODY WINS", 0
+.table
+    LDA #C_CYAN : LDX #C_BLACK : JSR set_colours
+    LDA #6 : LDX #10 : JSR at
+    JSR print_inline : EQUS "PLAYER       SCORE    MONEY", 0
+    LDA #0 : STA i
+.row
+    LDX i : LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDA i : ASL A : ADC #12 : TAX : LDA #6 : JSR at
+    LDX i : JSR print_name
+    LDA #4*20 : STA text_x
+    LDX i : LDA tank_score,X : LDX #3 : JSR print_byte
+    LDA #4*26 : STA text_x
+    LDX i : JSR print_money
+    INC i : LDA i : CMP num_players : BNE row
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #11 : LDX #28 : JSR at
+    JSR print_inline : EQUS "SPACE TO GO ON", 0
+.wait
+    JSR get_key : CMP #32 : BNE wait
+    RTS
+}
+
+\ Everyone's money earns interest between rounds: m/16 - m/64, about 5%.
+.interest
+{
+    ZA_AUTO1 i
+    LDA #0 : STA i
+.player
+    LDA i : STA t : ASL A : ADC t : TAX
+    \ num = money / 16
+    LDA tank_money,X : STA num
+    LDA tank_money+1,X : STA num+1
+    LDA tank_money+2,X : STA num+2
+    LDY #4 : JSR shift
+    LDA num : STA q : LDA num+1 : STA q+1 : LDA num+2 : STA q+2
+    LDY #2 : JSR shift                          ; num = money / 64
+    LDA q : SEC : SBC num : STA num
+    LDA q+1 : SBC num+1 : STA num+1
+    LDA q+2 : SBC num+2 : STA num+2
+    LDX i : JSR money_add
+    INC i : LDA i : CMP num_players : BNE player
+    RTS
+.shift
+    LSR num+2 : ROR num+1 : ROR num
+    DEY : BNE shift
+    RTS
+.t EQUB 0
+.q EQUB 0, 0, 0
+}
+
+\ The game is over: whoever scored most is champion.
+.champion
+{
+    ZA_AUTO1 best
+    LDX #0 : STX best
+.find
+    LDA tank_score,X : LDY best : CMP tank_score,Y : BCC @+ : STX best : .@
+    INX : CPX num_players : BNE find
+    JSR cls
+    JSR draw_title
+    LDX best : LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDA #9 : LDX #12 : JSR at
+    LDX best : JSR print_name
+    JSR print_inline : EQUS " IS CHAMPION", 0
+    JSR snd_fanfare
+    LDA #C_WHITE : LDX #C_BLACK : JSR set_colours
+    LDA #10 : LDX #28 : JSR at
+    JSR print_inline : EQUS "SPACE TO PLAY AGAIN", 0
+.wait
+    JSR get_key : CMP #32 : BNE wait
+    RTS
+}

@@ -1,0 +1,69 @@
+\ ***************************************************************************
+\ SCORCHED EARTH for the BBC Micro - shared constants and memory map
+\ ***************************************************************************
+
+\ --- OS entry points and vectors ---------------------------------------------
+
+osasci  = &FFE3
+oswrch  = &FFEE
+osword  = &FFF1
+osbyte  = &FFF4
+oscli   = &FFF7
+irq1v   = &0204
+
+\ --- Hardware ----------------------------------------------------------------
+
+crtc_reg   = &FE00
+crtc_data  = &FE01
+ula_pal    = &FE21          ; MODE 2: one write recolours one logical colour
+sysvia_ifr = &FE4D
+sysvia_ier = &FE4E
+
+\ --- Screen ------------------------------------------------------------------
+\ MODE 2: 160x256, 4 bits a pixel, two pixels a byte. Bytes run down a
+\ character row in eights (8 bytes = 2 pixels wide x 8 rows), 80 of those
+\ make a 640-byte character row. The left pixel's colour bits are 7,5,3,1
+\ and the right's 6,4,2,0.
+
+\ The screen is cut down to SCREEN_ROWS character rows (MODE 2 proper has
+\ 32) to give the code more room: every row dropped is 640 bytes.
+SCREEN_ROWS = 29
+screen     = &8000 - SCREEN_ROWS * 640
+SCREEN_W   = 160
+TOP        = 16             ; first playfield row; above it is the status bar
+FLOOR      = SCREEN_ROWS * 8 - 1    ; bottom row: bedrock, never carved
+
+LEFTPIX    = &AA            ; bits belonging to the left pixel of a byte
+RIGHTPIX   = &55
+
+\ Logical colours. 0-7 keep the default palette; 8-15 are the explosion
+\ colours, palette-cycled by `glow` and otherwise set to black.
+C_BLACK    = 0
+C_RED      = 1
+C_GREEN    = 2
+C_YELLOW   = 3
+C_BLUE     = 4
+C_MAGENTA  = 5
+C_CYAN     = 6
+C_WHITE    = 7
+C_HOT      = 8              ; first of the eight explosion colours
+
+\ The left pixel's bits for colour c, and a byte with both pixels in c.
+FUNCTION lpix(c) = (c AND 8) * 16 + (c AND 4) * 8 + (c AND 2) * 4 + (c AND 1) * 2
+FUNCTION cbyte(c) = lpix(c) + lpix(c) DIV 2
+
+\ --- Memory map --------------------------------------------------------------
+\ Zero page &00-&8F belongs to baron's allocator (ZA_POOL in main.6502).
+\ Everything else outside the code is laid out in memory.6502.
+
+MAXP   = 6                  ; players
+MAX_R  = 63                 ; largest blast radius, in rows
+MAXSH  = 9                  ; shells in flight at once
+
+\ Long branches, for when a routine outgrows the 6502's reach.
+MACRO JNE target
+    BEQ @+ : JMP target : .@
+ENDMACRO
+MACRO JEQ target
+    BNE @+ : JMP target : .@
+ENDMACRO

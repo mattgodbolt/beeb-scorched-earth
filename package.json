@@ -1,0 +1,13 @@
+{
+  "name": "beeb-scorched-earth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Test harness for the BBC Micro game Scorched Earth (BBC Micro), driving jsbeeb over MCP",
+  "scripts": {
+    "test": "make test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

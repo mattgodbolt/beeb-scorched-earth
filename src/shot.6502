@@ -1,0 +1,259 @@
+\ ***************************************************************************
+\ Ballistics.
+\
+\ Position is 16.16 fixed point (x in pixels, y in rows), velocity 8.16, in
+\ pixels per substep. There are SUBSTEPS substeps a frame so that a shell
+\ never moves more than a pixel between collision checks. Gravity is added
+\ every substep, wind once a frame.
+\
+\ The same code flies the shells you see and the invisible test shots the
+\ computer players aim with (fly_quiet).
+\ ***************************************************************************
+
+SUBSTEPS   = 8
+GRAVITY    = 51             ; rows/substep^2, in 1/65536ths
+POWER_MUL  = 43             ; launch speed per point of power, 1/65536 row/substep
+MAX_FRAMES = 1000           ; give up on a shot after 20 seconds
+
+\ Wall types
+WALL_NONE     = 0           ; shots leave the screen and are lost
+WALL_WRAP     = 1
+WALL_RUBBER   = 2
+WALL_CONCRETE = 3
+OFFSCREEN     = 64          ; how far off either side a shot is still tracked
+
+\ Results of a flight
+HIT_GROUND = 0
+HIT_TANK   = 1
+HIT_LOST   = 2
+HIT_APEX   = 3
+
+\ The shell being flown. weapons.6502 keeps the others in 16-byte records
+\ of exactly this layout.
+ZA_AUTO 16, shell
+shot_x     = shell + 0      ; frac lo, frac hi, int lo, int hi
+shot_y     = shell + 4
+shot_vx    = shell + 8      ; frac lo, frac hi, int (signed)
+shot_vy    = shell + 11
+shot_kind  = shell + 14     ; SK_ kind, hops, UNARMED (weapons.6502)
+ZA_AUTO2 wind_acc           ; added to shot_vx every frame (signed)
+ZA_AUTO1 wall_type
+ZA_AUTO1 shot_colour        ; colour byte of the shell, 0 = invisible
+ZA_AUTO1 shot_trail         ; nonzero: leave a trail instead of erasing
+ZA_AUTO1 shot_owner         ; the tank that fired, immune until clear of it
+ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
+
+\ Set up a shell leaving the turret of tank `cur` at its angle and power.
+.launch
+{
+    ZA_AUTO2 speed
+    LDX cur : STX shot_owner
+    \ speed = power * POWER_MUL (fits in 16 bits for power <= 1500)
+    LDA tank_power_lo,X : STA mul16.m
+    LDA tank_power_hi,X : STA mul16.m+1
+    LDA #POWER_MUL : JSR mul16
+    LDA mul16.r : STA speed
+    LDA mul16.r+1 : STA speed+1
+    LDX cur : LDA tank_angle,X : JSR angle_vec
+    \ vy = -(speed * sin) / 256
+    LDA speed : STA mul16.m : LDA speed+1 : STA mul16.m+1
+    LDA vec_up : JSR mul16
+    LDA #0 : SEC : SBC mul16.r+1 : STA shot_vy
+    LDA #0 : SBC mul16.r+2 : STA shot_vy+1
+    LDA #0 : SBC #0 : STA shot_vy+2
+    \ vx = +-(speed * cos) / 512: pixels are twice as wide as rows are tall
+    LDA speed : STA mul16.m : LDA speed+1 : STA mul16.m+1
+    LDA vec_side : JSR mul16
+    LSR mul16.r+2 : ROR mul16.r+1
+    LDA mul16.r+1 : STA shot_vx
+    LDA mul16.r+2 : STA shot_vx+1
+    LDA #0 : STA shot_vx+2
+    BIT vec_left : BPL right
+    LDA #0 : SEC : SBC shot_vx : STA shot_vx
+    LDA #0 : SBC shot_vx+1 : STA shot_vx+1
+    LDA #0 : SBC #0 : STA shot_vx+2
+.right
+    \ Start in the middle of the turret's pivot pixel.
+    LDX cur
+    LDA #0 : STA shot_x : STA shot_y : STA shot_x+3 : STA shot_y+3
+    LDA #&80 : STA shot_x+1 : STA shot_y+1
+    LDA tank_x,X : STA shot_x+2
+    LDA tank_y,X : SEC : SBC #TANK_H-1 : STA shot_y+2
+    LDX weapon : LDA item_kind,X : ORA #UNARMED : STA shot_kind
+    RTS
+}
+
+\ 16x8 multiply: mul16.m * A -> mul16.r (24 bits).
+.mul16
+{
+    ZA_AUTO2 m
+    ZA_AUTO 3, r
+    ZA_AUTO1 mult, t
+    STA mult
+    LDA #0 : STA r : STA r+1 : STA r+2 : STA t
+    LDX #8
+.bit
+    ASL r : ROL r+1 : ROL r+2
+    ASL mult : BCC skip
+    LDA r : CLC : ADC m : STA r
+    LDA r+1 : ADC m+1 : STA r+1
+    BCC skip : INC r+2
+.skip
+    DEX : BNE bit
+    RTS
+}
+
+\ Move the shell on by one frame. Carry set if something happened, with
+\ hit_kind, hit_x, hit_y and, for HIT_TANK, hit_tank.
+.shell_frame
+{
+    ZA_AUTO1 sub
+    LDA #SUBSTEPS : STA sub
+.substep
+    \ vy += gravity
+    LDA shot_vy : CLC : ADC #LO(GRAVITY) : STA shot_vy
+    LDA shot_vy+1 : ADC #HI(GRAVITY) : STA shot_vy+1
+    LDA shot_vy+2 : ADC #0 : STA shot_vy+2
+    \ x += vx, y += vy (sign-extending the velocity's integer byte)
+    LDA shot_x : CLC : ADC shot_vx : STA shot_x
+    LDA shot_x+1 : ADC shot_vx+1 : STA shot_x+1
+    LDY #0 : LDA shot_vx+2 : BPL @+ : DEY : .@
+    ADC shot_x+2 : STA shot_x+2
+    TYA : ADC shot_x+3 : STA shot_x+3
+    LDA shot_y : CLC : ADC shot_vy : STA shot_y
+    LDA shot_y+1 : ADC shot_vy+1 : STA shot_y+1
+    LDY #0 : LDA shot_vy+2 : BPL @+ : DEY : .@
+    ADC shot_y+2 : STA shot_y+2
+    TYA : ADC shot_y+3 : STA shot_y+3
+    JSR walls : BCS event
+    \ Off the side (only possible with no walls): nothing to hit.
+    LDA shot_x+3 : BNE next
+    LDA shot_x+2 : CMP #SCREEN_W : BCS next
+    \ Above the screen: nothing to hit either.
+    LDA shot_y+3 : BMI next
+    BNE bottom
+    LDA shot_y+2 : CMP #FLOOR : BCS bottom
+    CMP #TOP : BCC next
+    \ The ground?
+    LDX shot_x+2 : CMP ground,X : BCC tanks
+    LDX #HIT_GROUND : BEQ event
+.bottom
+    LDA #FLOOR-1 : STA shot_y+2 : LDA #0 : STA shot_y+3
+    LDX #HIT_GROUND : BEQ event
+.tanks
+    JSR tank_at : BCC next
+    LDX #HIT_TANK : BNE event
+.next
+    DEC sub : BEQ @+ : JMP substep : .@
+    \ Wind, once a frame.
+    LDA shot_vx : CLC : ADC wind_acc : STA shot_vx
+    LDA shot_vx+1 : ADC wind_acc+1 : STA shot_vx+1
+    LDY #0 : LDA wind_acc+1 : BPL @+ : DEY : .@
+    TYA : ADC shot_vx+2 : STA shot_vx+2
+    CLC
+    RTS
+.event
+    STX hit_kind
+    LDA shot_x+2 : STA hit_x
+    LDA shot_y+2 : STA hit_y
+    SEC
+    RTS
+}
+
+\ Fly the shell invisibly to wherever it ends up: the computer players'
+\ test shots.
+.fly_quiet
+{
+    ZA_AUTO2 frames
+    LDA #0 : STA frames : STA frames+1
+.loop
+    JSR shell_frame : BCS done
+    INC frames : BNE loop
+    INC frames+1 : LDA frames+1 : CMP #HI(MAX_FRAMES) : BCC loop
+    LDX #HIT_LOST : STX hit_kind
+.done
+    RTS
+}
+
+\ Is the shell inside a tank? Carry set and hit_tank if so. The firing
+\ tank is ignored until the shell has once been clear of it.
+.tank_at
+{
+    LDX #0
+.tloop
+    LDA tank_alive,X : BEQ tnext
+    LDA shot_x+2 : SEC : SBC tank_x,X
+    BCS @+ : EOR #&FF : ADC #1 : .@             ; |dx|
+    CMP #TANK_HALF+1 : BCS tclear
+    LDA tank_y,X : SEC : SBC shot_y+2
+    CMP #TANK_H : BCS tclear                    ; (above it, or below: wraps)
+    CPX shot_owner : BNE thit
+    BIT shot_kind : BMI tnext                   ; still leaving its own tank
+.thit
+    STX hit_tank
+    SEC
+    RTS
+.tclear
+    CPX shot_owner : BNE tnext
+    LDA shot_kind : AND #&FF - UNARMED : STA shot_kind
+.tnext
+    INX : CPX num_players : BNE tloop
+    CLC
+    RTS
+}
+
+\ Apply the walls to a shell that has left the sides. Carry set (and X =
+\ hit kind) if the flight ends here.
+.walls
+{
+    LDA shot_x+3 : BMI left
+    BNE right
+    LDA shot_x+2 : CMP #SCREEN_W : BCS right
+    CLC
+    RTS
+.left
+    LDA wall_type : BEQ open_left
+    CMP #WALL_WRAP : BEQ wrap_left
+    CMP #WALL_RUBBER : BEQ bounce_left
+    LDA #0 : STA shot_x+2 : STA shot_x+3
+    JMP concrete
+.wrap_left
+    LDA shot_x+2 : CLC : ADC #SCREEN_W : STA shot_x+2
+    LDA #0 : STA shot_x+3
+    CLC : RTS
+.bounce_left
+    LDA #0 : STA shot_x+2 : STA shot_x+3
+    JMP bounce
+.open_left
+    \ Lost once it is OFFSCREEN pixels out (x < -OFFSCREEN).
+    LDA shot_x+2 : CMP #256-OFFSCREEN : BCS stay
+.lost
+    LDX #HIT_LOST : SEC : RTS
+.right
+    LDA wall_type : BEQ open_right
+    CMP #WALL_WRAP : BEQ wrap_right
+    CMP #WALL_RUBBER : BEQ bounce_right
+    LDA #SCREEN_W-1 : STA shot_x+2 : LDA #0 : STA shot_x+3
+.concrete
+    \ Bursts on the wall - unless it went over the top of the screen.
+    LDA shot_y+3 : BNE lost
+    LDA shot_y+2 : CMP #TOP : BCC lost
+    LDX #HIT_GROUND : SEC : RTS
+.wrap_right
+    LDA shot_x+2 : SEC : SBC #SCREEN_W : STA shot_x+2
+    LDA shot_x+3 : SBC #0 : STA shot_x+3
+    CLC : RTS
+.bounce_right
+    LDA #SCREEN_W-1 : STA shot_x+2 : LDA #0 : STA shot_x+3
+.bounce
+    LDA #0 : SEC : SBC shot_vx : STA shot_vx
+    LDA #0 : SBC shot_vx+1 : STA shot_vx+1
+    LDA #0 : SBC shot_vx+2 : STA shot_vx+2
+    CLC : RTS
+.open_right
+    LDA shot_x+3 : BNE lost
+    LDA shot_x+2 : CMP #SCREEN_W+OFFSCREEN : BCS lost
+.stay
+    CLC
+    RTS
+}

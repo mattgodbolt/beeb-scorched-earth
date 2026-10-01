@@ -1,0 +1,179 @@
+\ ***************************************************************************
+\ Tanks: drawing, aiming, falling.
+\ A tank is 7 pixels wide and 5 rows tall. tank_x is its centre column,
+\ tank_y its bottom row (the row just above the ground it stands on).
+\ The turret pivots on the top of the dome, one row above the body.
+\ ***************************************************************************
+
+TANK_HALF   = 3             ; columns either side of tank_x
+TANK_H      = 5             ; rows
+BARREL_LEN  = 5
+
+\ Player colours: red, yellow, magenta, cyan, white, blue.
+.player_colours
+    EQUB C_RED, C_YELLOW, C_MAGENTA, C_CYAN, C_WHITE, C_BLUE
+
+\ The body, top row first, bit 6 = leftmost column.
+.tank_shape
+    EQUB %0011100
+    EQUB %0111110
+    EQUB %1111111
+    EQUB %1111111
+    EQUB %0101010
+
+\ sin(d) * 255 for d = 0..90 degrees.
+.sintab
+    EQUB ROUND(SIN((0..90) * PI / 180) * 255)
+
+\ Break an angle (0-180) into upward and sideways magnitudes.
+\ In: A = angle. Out: vec_up = sin, vec_side = |cos|, vec_left = &FF if
+\ the angle points left, else 0. Preserves Y.
+ZA_AUTO1 vec_up, vec_side, vec_left
+.angle_vec
+{
+    CMP #91 : BCS left
+    TAX : LDA sintab,X : STA vec_up
+    TXA : EOR #&FF : SEC : ADC #90 : TAX        ; 90 - a
+    LDA sintab,X : STA vec_side
+    LDA #0 : STA vec_left
+    RTS
+.left
+    TAX
+    EOR #&FF : SEC : ADC #180 : TAX            ; 180 - a
+    LDA sintab,X : STA vec_up
+    TXA : EOR #&FF : SEC : ADC #90 : TAX        ; a - 90 = 90 - (180 - a)
+    LDA sintab,X : STA vec_side
+    LDA #&FF : STA vec_left
+    RTS
+}
+
+ZA_AUTO1 cur                ; the player a routine is working on
+
+\ Draw tank `cur`: body, shield, then barrel.
+.draw_tank
+    JSR draw_body
+    LDX cur : LDA tank_shield,X : BEQ noshield
+    JSR draw_shield
+.noshield
+    LDA draw_body.col
+    JMP barrel
+
+\ A shield is a dotted dome over the tank, in its colour.
+SHIELD_R = 8
+.draw_shield
+{
+    ZA_AUTO1 dy, y
+    LDA #SHIELD_R : STA disc_r
+    JSR make_profile
+    LDA #0 : STA dy
+.row
+    LDX cur : LDA tank_y,X : SEC : SBC #2 : SEC : SBC dy : STA y
+    CMP #TOP : BCC next
+    LDX dy : LDA profile,X : STA t
+    LDX cur : LDA tank_x,X : SEC : SBC t : JSR dot
+    LDX cur : LDA tank_x,X : CLC : ADC t : JSR dot
+.next
+    INC dy : LDA dy : CMP #SHIELD_R+1 : BNE row
+    RTS
+.dot
+    CMP #SCREEN_W : BCS off
+    TAX : LDY y : LDA draw_body.col : JMP plot
+.off
+    RTS
+.t EQUB 0
+}
+
+\ Draw the body of tank `cur`.
+.draw_body
+{
+    ZA_AUTO1 row, bits, x, y
+    LDX cur
+    LDA tank_colour,X : TAY : LDA cbytes,Y : STA col
+    LDA tank_y,X : SEC : SBC #TANK_H-1 : STA y
+    LDA #0 : STA row
+.rowloop
+    LDX row : LDA tank_shape,X : ASL A : STA bits
+    LDX cur : LDA tank_x,X : SEC : SBC #TANK_HALF : STA x
+.pix
+    ASL bits : BCC skip
+    LDX x : CPX #SCREEN_W : BCS skip            ; (clipped at the edges)
+    LDY y : LDA col : JSR plot
+.skip
+    INC x
+    LDA bits : BNE pix
+    INC y
+    INC row : LDA row : CMP #TANK_H : BNE rowloop
+    RTS
+.col EQUB 0
+}
+
+\ Draw (A = colour byte) or, via erase_barrel, undraw the barrel of
+\ tank `cur` at its current angle.
+.barrel
+{
+    ZA_AUTO1 col, k, px, py
+    ZA_AUTO2 ax, ay
+    STA col
+    LDX cur
+    LDA tank_angle,X : JSR angle_vec
+    LDA #0 : STA ax : STA ax+1 : STA ay : STA ay+1
+    LDA #BARREL_LEN : STA k
+.point
+    \ ax += cos, ay += sin; the point is (ax / 512, ay / 256) rounded:
+    \ sideways distances are halved because pixels are twice as wide.
+    LDA ax : CLC : ADC vec_side : STA ax
+    LDA ax+1 : ADC #0 : STA ax+1
+    LDA ay : CLC : ADC vec_up : STA ay
+    LDA ay+1 : ADC #0 : STA ay+1
+    LDA ax+1 : CLC : ADC #1 : LSR A             ; dx = (ax + 256) / 512
+    BIT vec_left : BPL right
+    EOR #&FF : CLC : ADC #1                     ; pointing left: negate
+.right
+    LDX cur : CLC : ADC tank_x,X : STA px
+    LDA ay : CMP #128 : LDA ay+1 : ADC #0 : STA py  ; dy = (ay + 128) / 256
+    LDA tank_y,X : SEC : SBC #TANK_H-1 : SEC : SBC py : TAY
+    LDX px : CPX #SCREEN_W : BCS skip
+    CPY #TOP : BCC skip
+    LDA col : BEQ erase
+    JSR plot : JMP skip
+.erase
+    JSR unplot
+.skip
+    DEC k : BNE point
+    RTS
+}
+
+\ Take the barrel away (repainting the background under it), then redraw
+\ the body in case the barrel crossed it.
+.erase_barrel
+{
+    LDA #0 : JSR barrel
+    JMP draw_body
+}
+
+\ Take a whole tank away: repaint its box and the space its barrel sweeps.
+.erase_tank
+{
+    LDX cur
+    LDA tank_x,X : SEC : SBC #TANK_HALF+3 : STA rect_x0
+    BCS @+ : LDA #0 : STA rect_x0 : .@
+    LDA tank_x,X : CLC : ADC #TANK_HALF+3 : STA rect_x1
+    LDA tank_y,X : SEC : SBC #TANK_H+BARREL_LEN : CMP #TOP : BCS @+ : LDA #TOP : .@
+    STA bg_y0
+    LDA tank_y,X : STA bg_y1
+    JMP repaint
+}
+
+\ Draw every live tank.
+.draw_tanks
+{
+    LDA cur : PHA
+    LDA #0 : STA cur
+.loop
+    LDX cur : LDA tank_alive,X : BEQ next
+    JSR draw_tank
+.next
+    INC cur : LDA cur : CMP num_players : BNE loop
+    PLA : STA cur
+    RTS
+}

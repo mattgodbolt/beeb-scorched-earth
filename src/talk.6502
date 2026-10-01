@@ -1,0 +1,62 @@
+\ ***************************************************************************
+\ Talking tanks. The lines are from the original's TALK1.CFG (said when
+\ firing) and TALK2.CFG (said when dying), cut to fit.
+\ ***************************************************************************
+
+ATTACK_LINES = 9
+DEATH_LINES  = 10
+.talk
+    EQUS "EAT MY SHORTS!", 0
+    EQUS "YOU'RE TOAST!", 0
+    EQUS "BANZAI!", 0
+    EQUS "MAKE MY DAY.", 0
+    EQUS "KNOCK, KNOCK.", 0
+    EQUS "OPEN WIDE!", 0
+    EQUS "TAKE THIS, SISSY!", 0
+    EQUS "DON'T TAKE THIS PERSONALLY.", 0
+    EQUS "I WONDER WHAT THIS BUTTON DOES?", 0
+    EQUS "UGH!", 0
+    EQUS "AARGH!", 0
+    EQUS "I'M MELTING!", 0
+    EQUS "FAREWELL, CRUEL WORLD.", 0
+    EQUS "ANOTHER ONE BITES THE DUST.", 0
+    EQUS "I HATE IT WHEN THAT HAPPENS.", 0
+    EQUS "MOMMY? IS THAT YOU?", 0
+    EQUS "THE FAT LADY SANG.", 0
+    EQUS "POW!", 0
+    EQUS "ZONK!", 0
+
+\ Tank `cur` says line A, in a bubble over its head, for a second or so.
+.say
+{
+    ZA_AUTO1 len, x0
+    LDX #LO(talk) : LDY #HI(talk)
+    JSR find_nth
+    STA str : STX str+1
+    \ how wide is it?
+    LDY #0
+.count
+    LDA (find_nth.ptr),Y : BEQ counted
+    INY : BNE count
+.counted
+    TYA : ASL A : ASL A : STA len               ; pixels
+    \ centred over the tank, kept on the screen
+    LSR A : STA x0
+    LDX cur : LDA tank_x,X : SEC : SBC x0 : BCS @+ : LDA #0 : .@
+    AND #&FE : STA x0
+    CLC : ADC len : BCS clip : CMP #SCREEN_W+1 : BCC @+
+.clip
+    LDA #SCREEN_W : SEC : SBC len : STA x0
+.@  LDA x0 : STA text_x : STA rect_x0
+    CLC : ADC len : SBC #0 : STA rect_x1
+    LDA tank_y,X : SEC : SBC #20
+    CMP #TOP : BCS @+ : LDA #TOP : .@
+    STA text_y : STA bg_y0
+    CLC : ADC #5 : STA bg_y1
+    LDA tank_colour,X : LDX #C_BLACK : JSR set_colours
+    LDA str : LDX str+1 : JSR print_string
+    LDA #75 : JSR wait_frames
+    JSR repaint
+    JMP draw_tanks
+.str EQUW 0
+}

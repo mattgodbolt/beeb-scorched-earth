@@ -1,0 +1,61 @@
+\ ***************************************************************************
+\ Memory outside the code: tables built at run time and per-player state.
+\ Each area is a section with a guard, so baron lays it out and complains
+\ if anything overflows - hand-placed addresses overlapped twice before
+\ this file existed.
+\ ***************************************************************************
+
+\ The bottom of the stack page. The stack itself never gets near it.
+SECTION StackLow, org = &0100, guard = &0180
+.inv            SKIP MAXP * NITEMS      ; inventory: inv[inv_base[p] + item]
+ENDSECTION
+
+\ The printer buffer: no printer here.
+SECTION Printer, org = &0880, guard = &08C0
+.tank_x         SKIP MAXP       ; centre column
+.tank_y         SKIP MAXP       ; bottom row
+.tank_alive     SKIP MAXP
+.tank_health    SKIP MAXP       ; 0-100; max power is 10x this
+.tank_angle     SKIP MAXP       ; 0 = right, 90 = up, 180 = left
+.tank_power_lo  SKIP MAXP       ; 0-1000
+.tank_power_hi  SKIP MAXP
+.tank_colour    SKIP MAXP       ; logical colour
+.tank_shield    SKIP MAXP       ; shield strength left, 0 = none
+.tank_weapon    SKIP MAXP       ; the weapon each player has selected
+ENDSECTION
+
+\ BASIC's workspace: four page-sized tables, indexed by screen row.
+SECTION Rows, org = &0400, guard = &0800
+.rowlo          SKIP 256        ; screen address of (0, y)
+.rowhi          SKIP 256
+.skyrow         SKIP 256        ; sky colour byte for row y (both pixels)
+.dirtrow        SKIP 256        ; dirt colour byte for row y
+ENDSECTION
+
+\ The tape and RS423 buffers, soft keys and user-defined characters.
+SECTION Tables, org = &0900, guard = &0D00
+.ground         SKIP SCREEN_W+1 ; first dirt row of column x
+.coloff_lo      SKIP SCREEN_W   ; (x >> 1) * 8, indexed by x
+.coloff_hi      SKIP SCREEN_W
+.profile        SKIP MAX_R+1    ; half-widths of the current disc, by |dy|
+.profile_prev   SKIP MAX_R+1    ; the previous ring's, while a blast grows
+.colspan        SKIP MAX_R/2+2  ; half-heights of the current disc, by |dx|
+.fall_x         SKIP MAX_R+3    ; columns with a block of dirt falling,
+.fall_top       SKIP MAX_R+3    ;   the block's top row,
+.fall_bot       SKIP MAX_R+3    ;   bottom row,
+.fall_dist      SKIP MAX_R+3    ;   and how far it has still to go
+.tank_type      SKIP MAXP       ; HUMAN or a computer personality
+.tank_tries     SKIP MAXP       ; shots a tosser has had
+.tank_money     SKIP MAXP*3     ; 24-bit, low bytes first, by player
+.tank_score     SKIP MAXP
+.tables_end
+ENDSECTION
+
+\ The NMI area; &0D00 itself stays the OS's RTI in case one ever comes.
+SECTION Nmi, org = &0D01, guard = &0E00
+.shells         SKIP MAXSH * 16 ; shells in flight (weapons.6502)
+.sh_drawn       SKIP MAXSH      ; nonzero while the shell's dot is on screen
+.sh_oldx        SKIP MAXSH
+.sh_oldy        SKIP MAXSH
+.sh_active      SKIP MAXSH
+ENDSECTION

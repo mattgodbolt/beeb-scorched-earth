@@ -1,0 +1,104 @@
+\ ***************************************************************************
+\ System: screen mode, vsync counting, keyboard.
+\ ***************************************************************************
+
+\ Cursor off, screen shortened, palette set, interrupts hooked. (!BOOT has
+\ already selected MODE 2.)
+.init_system
+{
+    JSR cls
+    \ Logical colours 0-7 are their own physical colours (the ULA wants the
+    \ physical one EOR 7); 8-15 stay black until a blast lights them.
+    LDA #&07
+.palette
+    STA ula_pal
+    CLC : ADC #&0F : CMP #&7F : BCC palette
+    JSR glow_off
+    LDX #0
+.vdu
+    LDA cursor_off,X : JSR oswrch
+    INX : CPX #10 : BNE vdu
+    \ Shorten the screen: fewer rows displayed, the start moved up to suit,
+    \ and vsync moved to keep the picture centred.
+    LDX #crtc_end - crtc_regs - 2
+.crtc
+    LDA crtc_regs,X : STA crtc_reg
+    LDA crtc_regs+1,X : STA crtc_data
+    DEX : DEX : BPL crtc
+    \ ESCAPE does nothing; the game polls it as an ordinary key.
+    LDA #229 : LDX #1 : LDY #0 : JSR osbyte
+    \ Cursor keys give codes 136-139 to OSRDCH, for the menus.
+    LDA #4 : LDX #1 : JSR osbyte
+    \ Hook IRQ1V to count vsyncs.
+    SEI
+    LDA irq1v : STA old_irq
+    LDA irq1v+1 : STA old_irq+1
+    LDA #LO(our_irq) : STA irq1v
+    LDA #HI(our_irq) : STA irq1v+1
+    CLI
+    RTS
+.cursor_off
+    EQUB 23, 1, 0, 0, 0, 0, 0, 0, 0, 0
+.crtc_regs
+    EQUB 6, SCREEN_ROWS
+    EQUB 7, 34 - (32 - SCREEN_ROWS) DIV 2
+    EQUB 12, HI(screen DIV 8)
+    EQUB 13, LO(screen DIV 8)
+.crtc_end
+}
+
+\ The OS has already saved A at &FC; X and Y must be left alone. The
+\ System VIA's CA1 flag is vsync.
+.our_irq
+{
+    ZA_INTERRUPT
+    LDA sysvia_ifr : AND #2 : BEQ chain
+    INC vsyncs
+.chain
+    JMP (old_irq)
+    ZA_CANJUMP &E000           ; the OS handler
+}
+.old_irq  EQUW 0
+.vsyncs   EQUB 0
+
+\ Wait for the next vsync.
+.wait_vsync
+{
+    LDA vsyncs
+.wait
+    CMP vsyncs : BEQ wait
+    RTS
+}
+
+\ Wait A frames.
+.wait_frames
+{
+    ZA_AUTO1 n
+    STA n
+.loop
+    JSR wait_vsync
+    DEC n : BNE loop
+    RTS
+}
+
+\ Is a key down? X = internal key number EOR &FF (i.e. the negative INKEY
+\ value). Returns with Z clear (BNE) if it is.
+.key_down
+{
+    LDA #129 : LDY #&FF : JSR osbyte
+    CPX #0
+    RTS
+}
+
+\ Negative INKEY numbers for the keys we use.
+K_SPACE  = &9D
+K_RETURN = &B6
+K_LEFT   = &E6
+K_RIGHT  = &86
+K_UP     = &C6
+K_DOWN   = &D6
+K_SHIFT  = &FF
+K_TAB    = &9F
+K_ESCAPE = &8F
+K_B      = &9B
+K_S      = &AE

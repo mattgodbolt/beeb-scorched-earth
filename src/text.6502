@@ -1,0 +1,207 @@
+\ ***************************************************************************
+\ Text: a 3x5 font in 4x6 cells, so MODE 2 gets 40 columns.
+\ Glyphs are drawn byte-aligned: a cell is exactly two screen bytes wide.
+\ ***************************************************************************
+
+\ A glyph is five rows of three pixels packed into a word, top row in the
+\ top bits: rows land at bits 15-13, 12-10, 9-7, 6-4 and 3-1.
+FUNCTION rowbits(s) = SUM((CODES(s) == 35) * {4, 2, 1})
+FUNCTION glyph(a, b, c, d, e) = (rowbits(a) << 13) + (rowbits(b) << 10) + (rowbits(c) << 7) + (rowbits(d) << 4) + (rowbits(e) << 1)
+MACRO GLYPH a, b, c, d, e
+    EQUW glyph(a, b, c, d, e)
+ENDMACRO
+
+\ Colour bytes for logical colours 0-15, both pixels.
+.cbytes
+    EQUB cbyte(0..15)
+
+ZA_AUTO1 text_x, text_y     ; pixel position of the next character (x even)
+
+\ Choose text colours: A = foreground, X = background (logical colours).
+\ Builds the four two-pixel patterns a glyph row is made of.
+.set_colours
+{
+    ZA_AUTO1 fg, bg
+    TAY : LDA cbytes,Y : STA fg
+    LDA cbytes,X : STA bg
+    AND #LEFTPIX : STA t : LDA bg : AND #RIGHTPIX : ORA t : STA pattern+0   ; ..
+    LDA bg : AND #LEFTPIX : STA t : LDA fg : AND #RIGHTPIX : ORA t : STA pattern+1   ; .#
+    LDA fg : AND #LEFTPIX : STA t : LDA bg : AND #RIGHTPIX : ORA t : STA pattern+2   ; #.
+    LDA fg : STA pattern+3                                                          ; ##
+    RTS
+.t EQUB 0
+}
+.pattern EQUB 0, 0, 0, 0
+
+\ Draw character A at (text_x, text_y) and move text_x on a cell.
+.draw_char
+{
+    ZA_AUTO2 ptr, bits
+    ZA_AUTO1 row, y
+    SEC : SBC #32 : CMP #64 : BCC @+ : LDA #0 : .@   ; anything else is a space
+    ASL A : TAX
+    LDA font,X : STA bits
+    LDA font+1,X : STA bits+1
+    LDA #0 : STA row
+    LDA text_y : STA y
+.rowloop
+    LDY y : LDX text_x
+    LDA rowlo,Y : CLC : ADC coloff_lo,X : STA ptr
+    LDA rowhi,Y : ADC coloff_hi,X : STA ptr+1
+    \ Next three bits: two for the first byte, one for the second.
+    LDA #0
+    ASL bits : ROL bits+1 : ROL A
+    ASL bits : ROL bits+1 : ROL A
+    TAX : LDA pattern,X
+    LDY #0 : STA (ptr),Y
+    LDA #0
+    ASL bits : ROL bits+1 : ROL A
+    ASL A : TAX : LDA pattern,X
+    LDY #8 : STA (ptr),Y
+    INC y
+    INC row : LDA row : CMP #6 : BNE rowloop
+    LDA text_x : CLC : ADC #4 : STA text_x
+    RTS
+}
+
+\ Print the zero-terminated string that follows the JSR.
+.print_inline
+{
+    ZA_AUTO2 ptr
+    PLA : STA ptr : PLA : STA ptr+1
+.next
+    INC ptr : BNE @+ : INC ptr+1 : .@
+    LDY #0 : LDA (ptr),Y : BEQ done
+    JSR draw_char
+    JMP next
+.done
+    LDA ptr+1 : PHA : LDA ptr : PHA
+    RTS
+}
+
+\ Print the zero-terminated string at (A = lo, X = hi).
+.print_string
+{
+    ZA_AUTO2 ptr
+    STA ptr : STX ptr+1
+    LDY #0
+.next
+    LDA (ptr),Y : BEQ done
+    STY y : JSR draw_char : LDY y
+    INY : BNE next
+.done
+    RTS
+.y EQUB 0
+}
+
+\ Print num (24-bit) in decimal, right-aligned in A characters, padded
+\ with spaces (A = 1..8).
+ZA_AUTO 3, num
+.print_num
+{
+    ZA_AUTO1 width, digit, started
+    STA width
+    LDA #0 : STA started
+    LDX #7                      ; power-of-ten index, 10^7 .. 10^0
+.place
+    LDA #0 : STA digit
+.sub
+    LDA num : SEC : SBC pow_lo,X : TAY
+    LDA num+1 : SBC pow_mid,X : STA t
+    LDA num+2 : SBC pow_hi,X : BCC enough
+    STA num+2 : LDA t : STA num+1 : STY num
+    INC digit : JMP sub
+.enough
+    LDA digit : ORA started : STA started
+    BNE show
+    CPX #0 : BEQ show           ; the units digit always shows
+    CPX width : BCS skip        ; leading zeroes outside the field: nothing
+    LDA #32 : BNE out           ; inside it: a space
+.show
+    LDA digit : ORA #48
+.out
+    STX t : JSR draw_char : LDX t
+.skip
+    DEX : BPL place
+    RTS
+.t EQUB 0
+.pow_lo  EQUB LO({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
+.pow_mid EQUB HI({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
+.pow_hi  EQUB ({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000} >> 16) AND 255
+}
+
+\ Print an 8-bit number in A, right-aligned in X characters.
+.print_byte
+{
+    STA num
+    LDA #0 : STA num+1 : STA num+2
+    TXA
+    JMP print_num
+}
+
+\ Glyphs for ASCII 32-95.
+.font
+    GLYPH "...", "...", "...", "...", "..."     ; space
+    GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; !
+    GLYPH "#.#", "#.#", "...", "...", "..."     ; "
+    GLYPH "#.#", "###", "#.#", "###", "#.#"     ; #
+    GLYPH ".##", "##.", ".#.", ".##", "##."     ; $
+    GLYPH "#.#", "..#", ".#.", "#..", "#.#"     ; %
+    GLYPH ".#.", "#.#", ".#.", "#.#", ".##"     ; &
+    GLYPH ".#.", ".#.", "...", "...", "..."     ; '
+    GLYPH "..#", ".#.", ".#.", ".#.", "..#"     ; (
+    GLYPH "#..", ".#.", ".#.", ".#.", "#.."     ; )
+    GLYPH "...", "#.#", ".#.", "#.#", "..."     ; *
+    GLYPH "...", ".#.", "###", ".#.", "..."     ; +
+    GLYPH "...", "...", "...", ".#.", "#.."     ; ,
+    GLYPH "...", "...", "###", "...", "..."     ; -
+    GLYPH "...", "...", "...", "...", ".#."     ; .
+    GLYPH "..#", "..#", ".#.", "#..", "#.."     ; /
+    GLYPH "###", "#.#", "#.#", "#.#", "###"     ; 0
+    GLYPH ".#.", "##.", ".#.", ".#.", "###"     ; 1
+    GLYPH "###", "..#", "###", "#..", "###"     ; 2
+    GLYPH "###", "..#", ".##", "..#", "###"     ; 3
+    GLYPH "#.#", "#.#", "###", "..#", "..#"     ; 4
+    GLYPH "###", "#..", "###", "..#", "###"     ; 5
+    GLYPH "###", "#..", "###", "#.#", "###"     ; 6
+    GLYPH "###", "..#", "..#", ".#.", ".#."     ; 7
+    GLYPH "###", "#.#", "###", "#.#", "###"     ; 8
+    GLYPH "###", "#.#", "###", "..#", "###"     ; 9
+    GLYPH "...", ".#.", "...", ".#.", "..."     ; :
+    GLYPH "...", ".#.", "...", ".#.", "#.."     ; ;
+    GLYPH "..#", ".#.", "#..", ".#.", "..#"     ; <
+    GLYPH "...", "###", "...", "###", "..."     ; =
+    GLYPH "#..", ".#.", "..#", ".#.", "#.."     ; >
+    GLYPH "###", "..#", ".##", "...", ".#."     ; ?
+    GLYPH ".#.", "#.#", "###", "#..", ".##"     ; @
+    GLYPH ".#.", "#.#", "###", "#.#", "#.#"     ; A
+    GLYPH "##.", "#.#", "##.", "#.#", "##."     ; B
+    GLYPH ".##", "#..", "#..", "#..", ".##"     ; C
+    GLYPH "##.", "#.#", "#.#", "#.#", "##."     ; D
+    GLYPH "###", "#..", "##.", "#..", "###"     ; E
+    GLYPH "###", "#..", "##.", "#..", "#.."     ; F
+    GLYPH ".##", "#..", "#.#", "#.#", ".##"     ; G
+    GLYPH "#.#", "#.#", "###", "#.#", "#.#"     ; H
+    GLYPH "###", ".#.", ".#.", ".#.", "###"     ; I
+    GLYPH "..#", "..#", "..#", "#.#", ".#."     ; J
+    GLYPH "#.#", "#.#", "##.", "#.#", "#.#"     ; K
+    GLYPH "#..", "#..", "#..", "#..", "###"     ; L
+    GLYPH "#.#", "###", "###", "#.#", "#.#"     ; M
+    GLYPH "##.", "#.#", "#.#", "#.#", "#.#"     ; N
+    GLYPH ".#.", "#.#", "#.#", "#.#", ".#."     ; O
+    GLYPH "##.", "#.#", "##.", "#..", "#.."     ; P
+    GLYPH ".#.", "#.#", "#.#", "##.", ".##"     ; Q
+    GLYPH "##.", "#.#", "##.", "#.#", "#.#"     ; R
+    GLYPH ".##", "#..", ".#.", "..#", "##."     ; S
+    GLYPH "###", ".#.", ".#.", ".#.", ".#."     ; T
+    GLYPH "#.#", "#.#", "#.#", "#.#", "###"     ; U
+    GLYPH "#.#", "#.#", "#.#", "#.#", ".#."     ; V
+    GLYPH "#.#", "#.#", "###", "###", "#.#"     ; W
+    GLYPH "#.#", "#.#", ".#.", "#.#", "#.#"     ; X
+    GLYPH "#.#", "#.#", ".#.", ".#.", ".#."     ; Y
+    GLYPH "###", "..#", ".#.", "#..", "###"     ; Z
+    GLYPH "##.", "#..", "#..", "#..", "##."     ; [
+    GLYPH "#..", "#..", ".#.", "..#", "..#"     ; \
+    GLYPH ".##", "..#", "..#", "..#", ".##"     ; ]
+    GLYPH ".#.", "#.#", "...", "...", "..."     ; ^
+    GLYPH "...", "...", "...", "...", "###"     ; _

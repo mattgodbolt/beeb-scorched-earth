@@ -1,0 +1,134 @@
+\ ***************************************************************************
+\ Sound, through the OS: OSWORD 8 defines the envelopes once, OSWORD 7
+\ queues notes. Every sound is a four-byte entry in snd_tab (channel,
+\ envelope, pitch, duration) expanded into the eight-byte OSWORD 7 block.
+\ The block's high bytes are always zero: every sound uses an envelope, so
+\ no amplitude is negative, and the channel word's hold/sync digits are 0.
+\
+\ Channels: 0 noise (fire, explosions), 1 fanfare, 2 click and death,
+\ 3 the shell's whistle - so the whistle never cuts off anything else.
+\ ***************************************************************************
+
+\ Envelopes. OSWORD 8 takes them as they are: number, step length in
+\ centiseconds (+&80: the pitch envelope does not repeat), three pitch
+\ changes and their step counts, then attack/decay/sustain/release rates
+\ and the attack and decay target levels (126 is full volume).
+.snd_init
+{
+    LDA #0
+.loop
+    PHA
+    CLC : ADC #LO(envs) : TAX
+    LDA #HI(envs) : ADC #0 : TAY
+    LDA #8 : JSR osword
+    PLA : CLC : ADC #14
+    CMP #envs_end - envs : BNE loop
+    RTS
+.envs
+    \ 1: boom. Instant attack, a fall to a long, slowly fading body that
+    \ lasts as long as the note does, then a quick tail.
+    EQUB 1, 2,    0, 0, 0,   0, 0, 0,   126, -4, -1, -8,  126, 90
+    \ 2: slide. Pitch falls one step every 2cs and never comes back up.
+    EQUB 2, &82, -1, 0, 0, 120, 0, 0,   126, -1,  0, -4,  110, 90
+    \ 3: blip. A struck note that dies away.
+    EQUB 3, 1,    0, 0, 0,   0, 0, 0,   126, -8, -1, -10, 126, 80
+    \ 4: whistle. Steady and quieter, so it sits under everything else.
+    EQUB 4, 1,    0, 0, 0,   0, 0, 0,    70, -1,  0, -10,  70, 60
+.envs_end
+}
+
+\ The OSWORD 7 block. Only the even bytes are ever written.
+.sblk   EQUW 0, 0, 0, 0
+
+\ Channel words: +&10 flushes the channel first, so the new sound starts now
+\ instead of queueing behind the last one.
+E_FIRE    = 0
+E_BOOM    = 4
+E_CLICK   = 8
+E_DIE     = 12
+E_WHISTLE = 16
+E_FANFARE = 20
+.snd_tab
+    EQUB &10, 1,   6,  1        ; fire: a burst of low noise
+    EQUB &10, 1,   0,  0        ; boom: pitch and duration from snd_explode
+    EQUB &12, 3, 200,  1        ; click
+    EQUB &12, 2, 120, 30        ; die: a long falling tone
+    EQUB &13, 4,   0,  2        ; whistle: pitch from flight_sound
+    EQUB &11, 3, 101,  2        ; fanfare: C E G C
+    EQUB &01, 3, 117,  2
+    EQUB &01, 3, 129,  2
+    EQUB &01, 3, 149,  8
+.snd_tab_end
+
+\ Play snd_tab entry X. A zero in the entry leaves that field of sblk as
+\ the caller set it, which is how pitch and duration are passed in.
+.snd_play
+{
+    LDY #0
+.copy
+    LDA snd_tab,X : BEQ keep
+    STA sblk,Y
+.keep
+    INX : INY : INY
+    CPY #8 : BNE copy
+    LDX #LO(sblk) : LDY #HI(sblk)
+    LDA #7 : JMP osword
+}
+
+.snd_fire
+    LDX #E_FIRE : BPL snd_play
+
+.snd_click
+    LDX #E_CLICK : BPL snd_play
+
+.snd_die
+    LDX #E_DIE : BPL snd_play
+
+\ Explosion of radius A rows (5..36). Bigger is longer and, through the
+\ noise channel's three white-noise rates, lower.
+.snd_explode
+{
+    LDX #4
+    CMP #10 : BCC @+ : INX
+    CMP #20 : BCC @+ : INX
+.@  STX sblk+4
+    LSR A : ADC #2 : STA sblk+6 ; 4..20 twentieths of a second
+    LDX #E_BOOM : BPL snd_play
+}
+
+\ Once a frame in flight: a whistle whose pitch follows the shell's height,
+\ a semitone every 8 rows. A new note goes out when the pitch moves by a
+\ semitone, or every fourth frame to keep the 1/10s note going; each one
+\ flushes the last, so the queue never backs up behind a falling shell.
+\ sblk+4 still holds the last pitch played (another sound may have changed
+\ it, which only costs one early note).
+.flight_sound
+{
+    LDA #250                    ; above the screen: the top of the range
+    LDX shot_y+3 : BNE play
+    LDA shot_y+2 : LSR A
+    EOR #&FF : ADC #251         ; 250 - y/2, +1 from the LSR's carry: the
+                                ; AND below swallows it
+.play
+    AND #&FC
+    CMP sblk+4 : BNE new
+    LDA vsyncs : AND #3 : BNE done
+    LDA sblk+4
+.new
+    STA sblk+4
+    LDX #E_WHISTLE : BPL snd_play
+.done
+    RTS
+}
+
+\ Round won: four rising notes, queued on channel 1 to play out by
+\ themselves.
+.snd_fanfare
+{
+    LDA #E_FANFARE
+.loop
+    PHA : TAX : JSR snd_play
+    PLA : CLC : ADC #4
+    CMP #snd_tab_end - snd_tab : BNE loop
+    RTS
+}

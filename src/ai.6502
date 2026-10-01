@@ -1,0 +1,245 @@
+\ ***************************************************************************
+\ Computer players.
+\
+\ They aim the way the Atari 8-bit Scorch does: by firing invisible test
+\ shots through the real ballistics (fly_quiet), so wind, walls and hills
+\ in the way are all accounted for without any special cases. For each
+\ angle they try, a binary search finds the power that lands nearest the
+\ target; then each personality spoils its own aim by a different amount.
+\ ***************************************************************************
+
+HUMAN   = 0
+MORON   = 1                 ; random
+SHOOTER = 2                 ; one steep angle, rough power
+TOSSER  = 3                 ; poor aim that improves with every shot
+SPOILER = 4                 ; good aim, three angles
+CYBORG  = 5                 ; better aim, and picks on the weakest tank
+NTYPES  = 6
+
+
+\ Power wobble by type, and the angles each one tries (degrees above the
+\ horizontal, towards the target).
+.ai_wobble  EQUB 0, 0, 40, 120, 20, 8
+.ai_first   EQUB 0, 0, 0, 1, 2, 2       ; index into ai_angles
+.ai_count   EQUB 0, 0, 1, 1, 3, 3
+.ai_angles  EQUB 70, 50, 45, 65, 30
+
+ZA_AUTO1 ai_target, ai_dist, ai_dir, ai_err
+ZA_AUTO2 ai_power
+
+\ Choose angle and power for computer player `cur`, then swing the turret
+\ round to it where everyone can see.
+.ai_turn
+{
+    ZA_AUTO1 type, n, k, best_err, best_angle
+    ZA_AUTO2 best_power
+    LDX cur : LDA tank_type,X : STA type
+    JSR choose_weapon
+    JSR pick_target
+    LDA type : CMP #MORON : BNE aimed_type
+    \ A moron: anything from 30 to 150 degrees, 200-900 power.
+.mangle
+    JSR rand : CMP #121 : BCS mangle
+    ADC #30 : STA best_angle
+    JSR rand : STA best_power : LDA #0 : STA best_power+1
+    ASL best_power : ROL best_power+1
+    LDA best_power : CLC : ADC #200 : STA best_power
+    LDA best_power+1 : ADC #0 : STA best_power+1
+    JMP swing
+.aimed_type
+    LDA #255 : STA best_err
+    LDX type : LDA ai_count,X : STA n
+    LDA ai_first,X : STA k
+.angle
+    LDX k : LDA ai_angles,X
+    BIT ai_dir : BPL @+ : EOR #&FF : SEC : ADC #180 : .@  ; mirror for left
+    LDX cur : STA tank_angle,X
+    JSR search_power
+    LDA ai_err : CMP best_err : BCS worse
+    STA best_err
+    LDX cur : LDA tank_angle,X : STA best_angle
+    LDA ai_power : STA best_power : LDA ai_power+1 : STA best_power+1
+.worse
+    INC k
+    DEC n : BNE angle
+    \ Spoil it: power +- wobble (a tosser's wobble halves each try).
+    LDX type : LDA ai_wobble,X : STA k
+    CPX #TOSSER : BNE wobble
+    LDX cur : LDY tank_tries,X : INC tank_tries,X
+.halve
+    DEY : BMI wobble
+    LSR k : JMP halve
+.wobble
+    LDA k : BEQ swing
+    JSR rand
+.mod
+    CMP k : BCC @+ : SBC k : JMP mod : .@
+    ASL A : SEC : SBC k                         ; -k .. k
+    BCS up
+    \ down by |A|
+    CLC : ADC best_power : STA best_power
+    LDA best_power+1 : ADC #&FF : STA best_power+1
+    BPL swing
+    LDA #0 : STA best_power : STA best_power+1
+    JMP swing
+.up
+    CLC : ADC best_power : STA best_power
+    LDA best_power+1 : ADC #0 : STA best_power+1
+.swing
+    \ Turn the turret a degree a frame, so people can see what is coming.
+    LDX cur
+    LDA best_power : STA tank_power_lo,X
+    LDA best_power+1 : STA tank_power_hi,X
+    JSR clamp_power
+    LDA tank_angle_was : LDX cur : STA tank_angle,X
+    JSR draw_status
+.turn
+    JSR wait_vsync
+    LDX cur : LDA tank_angle,X : CMP best_angle : BEQ there
+    PHP : JSR erase_barrel : PLP
+    LDX cur
+    BCC @+ : DEC tank_angle,X : DEC tank_angle,X : .@
+    INC tank_angle,X
+    JSR draw_tank
+    JSR draw_angle
+    JMP turn
+.there
+    LDA #25 : JMP wait_frames
+}
+.tank_angle_was EQUB 0
+
+\ Pick a target: the nearest live enemy, or for a cyborg the weakest.
+\ Sets ai_target, ai_dist (pixels) and ai_dir (0 right, &FF left).
+.pick_target
+{
+    ZA_AUTO1 best, i, d
+    LDX cur : LDA tank_angle,X : STA tank_angle_was
+    LDA #255 : STA best
+    LDA #0 : STA i
+.loop
+    LDX i : CPX cur : BEQ next
+    LDA tank_alive,X : BEQ next
+    LDY cur
+    LDA tank_x,X : SEC : SBC tank_x,Y
+    BCS @+ : EOR #&FF : ADC #1 : .@
+    STA d
+    LDY cur : LDA tank_type,Y : CMP #CYBORG : BNE @+
+    LDA tank_health,X : STA d : .@
+    LDA d : CMP best : BCS next
+    STA best : STX ai_target
+.next
+    INC i : LDA i : CMP num_players : BNE loop
+    \ distance and direction to it
+    LDX ai_target : LDY cur
+    LDA #0 : STA ai_dir
+    LDA tank_x,X : SEC : SBC tank_x,Y
+    BCS @+ : EOR #&FF : ADC #1 : DEC ai_dir : .@
+    STA ai_dist
+    RTS
+}
+
+\ Binary-search the power, at the angle tank `cur` has, that lands the
+\ shell nearest the target. Leaves ai_power and ai_err (pixels, 255 max).
+.search_power
+{
+    ZA_AUTO2 lo, hi
+    ZA_AUTO1 iter
+    LDA #LO(80) : STA lo : LDA #HI(80) : STA lo+1
+    LDX cur
+    LDA tank_health,X : STA mul16.m : LDA #0 : STA mul16.m+1
+    LDA #10 : JSR mul16
+    LDA mul16.r : STA hi : LDA mul16.r+1 : STA hi+1
+    LDA #8 : STA iter
+.step
+    \ try the middle
+    LDA lo : CLC : ADC hi : STA ai_power
+    LDA lo+1 : ADC hi+1 : ROR A : STA ai_power+1 : ROR ai_power
+    JSR test_shot
+    BCC long
+    LDA ai_power : STA lo : LDA ai_power+1 : STA lo+1
+    JMP next
+.long
+    LDA ai_power : STA hi : LDA ai_power+1 : STA hi+1
+.next
+    LDA ai_err : BEQ done                       ; spot on
+    DEC iter : BNE step
+.done
+    RTS
+}
+
+\ Fire a test shot at ai_power. Carry set if it fell short. ai_err is how
+\ far from the target it landed.
+.test_shot
+{
+    ZA_AUTO2 prog
+    ZA_AUTO1 walls_were
+    LDX cur
+    LDA ai_power : STA tank_power_lo,X
+    LDA ai_power+1 : STA tank_power_hi,X
+    LDA #0 : STA weapon
+    \ The test shots ignore the walls: a shot is judged on how far it went.
+    LDA wall_type : STA walls_were
+    LDA #WALL_NONE : STA wall_type
+    JSR launch
+    JSR fly_quiet
+    LDA walls_were : STA wall_type
+    LDA hit_kind : CMP #HIT_TANK : BNE miss
+    LDA hit_tank : CMP ai_target : BNE miss
+    LDA #0 : STA ai_err
+    CLC
+    RTS
+.miss
+    \ progress = how far the shell got towards the target side
+    LDX cur
+    LDA shot_x+2 : SEC : SBC tank_x,X : STA prog
+    LDA shot_x+3 : SBC #0 : STA prog+1
+    BIT ai_dir : BPL @+
+    LDA #0 : SEC : SBC prog : STA prog
+    LDA #0 : SBC prog+1 : STA prog+1
+.@
+    \ err = |prog - dist|, short if prog < dist
+    LDA prog : SEC : SBC ai_dist : STA prog
+    LDA prog+1 : SBC #0 : STA prog+1
+    BMI short
+    BNE farlong
+    LDA prog : STA ai_err
+    CLC
+    RTS
+.farlong
+    LDA #255 : STA ai_err
+    CLC
+    RTS
+.short
+    CMP #&FF : BNE farshort
+    LDA #0 : SEC : SBC prog : STA ai_err
+    SEC
+    RTS
+.farshort
+    LDA #255 : STA ai_err
+    SEC
+    RTS
+}
+
+\ Choose the biggest gun in the inventory, most of the time.
+.choose_weapon
+{
+    LDX cur : LDA #0 : STA tank_weapon,X
+    JSR rand : AND #3 : BEQ done                ; a quarter of the time: baby
+    LDA #NWEAPONS-1 : STA w
+.try
+    LDA w : TAY : LDA item_kind,Y
+    CMP #SK_MISSILE : BEQ ok
+    CMP #SK_MIRV : BEQ ok
+    CMP #SK_ROLLER : BEQ ok
+    CMP #SK_FUNKY : BEQ ok
+    BNE next
+.ok
+    LDA w : JSR inv_index : LDA inv,X : BEQ next
+    LDX cur : LDA w : STA tank_weapon,X
+    RTS
+.next
+    DEC w : BNE try
+.done
+    RTS
+.w EQUB 0
+}

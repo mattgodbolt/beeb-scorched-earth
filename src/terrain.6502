@@ -1,0 +1,115 @@
+\ ***************************************************************************
+\ Terrain: generation, sky and dirt colouring, drawing.
+\ The landscape is a heightmap: ground[x] is the first dirt row of column x.
+\ ***************************************************************************
+
+MIN_GROUND = 64             ; highest a peak may reach
+MAX_GROUND = FLOOR - 12     ; lowest a valley may sink
+
+\ 16-bit xorshift (John Metcalf's 7,9,8). Returns a fresh byte in A.
+ZA_AUTO2 seed
+.rand
+    LDA seed+1
+    LSR A
+    LDA seed
+    ROR A
+    EOR seed+1
+    STA seed+1
+    ROR A
+    EOR seed
+    STA seed
+    EOR seed+1
+    STA seed+1
+    RTS
+
+\ Midpoint displacement over ground[0..160]: anchors every 32 columns,
+\ then each level halves the gap and the bump size. terrain_amp is the
+\ first level's bump mask (a power of two minus one): 63 is mountainous,
+\ 15 gently rolling.
+ZA_AUTO1 terrain_amp
+.gen_terrain
+{
+    ZA_AUTO1 step, half, amp, i, mid, sum
+    \ Anchors.
+    LDX #0
+.anchor
+    JSR rand : AND #127 : CLC : ADC #MIN_GROUND+30
+    STA ground,X
+    TXA : CLC : ADC #32 : TAX
+    CPX #SCREEN_W+32 : BNE anchor
+    LDA #32 : STA step
+    LDA terrain_amp : STA amp
+.level
+    LDA step : LSR A : STA half
+    STA i
+.point
+    \ ground[i] = mean of the neighbours half a step away, plus a bump
+    LDA i : SEC : SBC half : TAX
+    LDA ground,X : STA sum
+    LDA i : CLC : ADC half : TAX
+    LDA ground,X : CLC : ADC sum : ROR A : STA mid
+    JSR rand : AND amp : STA sum
+    LDA amp : LSR A : EOR #&FF : SEC : ADC sum  ; bump in -amp/2 .. +amp/2
+    BMI down
+    CLC : ADC mid : BCS low : CMP #MAX_GROUND : BCC store
+.low
+    LDA #MAX_GROUND : BNE store
+.down
+    CLC : ADC mid : BCC high : CMP #MIN_GROUND : BCS store
+.high
+    LDA #MIN_GROUND
+.store
+    LDX i : STA ground,X
+    LDA i : CLC : ADC step : STA i
+    CMP #SCREEN_W+1 : BCC point
+    LSR amp
+    LSR step
+    LDA step : CMP #1 : BNE level
+    RTS
+}
+
+\ Fill skyrow and dirtrow for this round's look: green dirt (no tank is
+\ green) striped every eighth row in a colour of the round's choosing, and
+\ half the time a "shaded" sky: black at the top, dithered towards blue by
+\ the horizon. Patterns depend on the row alone, so anything can still be
+\ repainted from the model.
+.make_colours
+{
+    ZA_AUTO1 shaded, stripe
+    JSR rand : AND #3 : TAX : LDA stripes,X : STA stripe
+    JSR rand : AND #1 : STA shaded
+    LDX #0
+.row
+    LDA #0
+    LDY shaded : BEQ sky
+    TXA : LSR A : LSR A : LSR A : LSR A : AND #&0C : STA t   ; (y >> 6) * 4
+    TXA : AND #3 : ORA t : TAY : LDA sky_dither,Y
+.sky
+    STA skyrow,X
+    TXA : AND #7 : BNE green
+    LDA stripe : BNE store
+.green
+    LDA #cbyte(C_GREEN)
+.store
+    STA dirtrow,X
+    INX : BNE row
+    RTS
+.t EQUB 0
+.stripes
+    EQUB cbyte(C_YELLOW), cbyte(C_CYAN), cbyte(C_WHITE), cbyte(C_BLUE)
+.sky_dither
+    EQUB 0, 0, 0, 0
+    EQUB lpix(C_BLUE), 0, 0, 0
+    EQUB lpix(C_BLUE), 0, lpix(C_BLUE) DIV 2, 0
+    EQUB lpix(C_BLUE), lpix(C_BLUE) DIV 2, lpix(C_BLUE), lpix(C_BLUE) DIV 2
+}
+
+\ Draw the whole playfield from the model.
+.draw_terrain
+{
+    LDA #TOP : STA bg_y0
+    LDA #FLOOR : STA bg_y1
+    LDA #0 : STA rect_x0
+    LDA #SCREEN_W-1 : STA rect_x1
+    JMP repaint
+}

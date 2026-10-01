@@ -1,0 +1,392 @@
+\ ***************************************************************************
+\ Weapons and items: the table, the inventory, and what each one does when
+\ it lands.
+\ ***************************************************************************
+
+\ What a shell does when it lands. A shell's kind byte holds one of these
+\ in its low nibble, leapfrog hops left in bits 4-5, and bit 7 set until
+\ it has been clear of the tank that fired it.
+SK_MISSILE = 0              ; explode
+SK_TRACER  = 1              ; nothing
+SK_ROLLER  = 2              ; roll downhill, then explode
+SK_DIRT    = 3              ; add a ball of dirt
+SK_RIOT    = 4              ; remove a ball of dirt, harm nobody
+SK_FUNKY   = 5              ; explode and scatter bomblets
+SK_BOMBLET = 6              ; a funky bomb's bomblet
+SK_LEAP    = 7              ; explode and hop on
+SK_MIRV    = 8              ; split at the top of the arc
+SK_ITEM    = 15             ; not a weapon at all
+UNARMED    = &80
+HOP        = &10
+
+\ Items, by inventory index (after the weapons).
+\ name, kind, radius (rows), blast power, price ($), bundle, split count
+ITEMS = {
+    {"BABY MISSILE",    SK_MISSILE,  6,  60,   400, 10, 0},
+    {"MISSILE",         SK_MISSILE, 10,  90,  1875,  5, 0},
+    {"BABY NUKE",       SK_MISSILE, 18, 120, 10000,  3, 0},
+    {"NUKE",            SK_MISSILE, 32, 160, 12000,  1, 0},
+    {"LEAPFROG",        SK_LEAP + 2 * HOP, 9, 80, 10000, 2, 0},
+    {"FUNKY BOMB",      SK_FUNKY,   12,  80,  7000,  2, 0},
+    {"MIRV",            SK_MIRV,    10,  90, 10000,  3, 5},
+    {"DEATH'S HEAD",    SK_MIRV,    16, 120, 20000,  1, 9},
+    {"TRACER",          SK_TRACER,   0,   0,    10, 20, 0},
+    {"BABY ROLLER",     SK_ROLLER,   6,  60,  5000, 10, 0},
+    {"ROLLER",          SK_ROLLER,  10,  90,  6000,  5, 0},
+    {"HEAVY ROLLER",    SK_ROLLER,  18, 120,  6750,  2, 0},
+    {"RIOT BOMB",       SK_RIOT,    14,   0,  5000,  5, 0},
+    {"HEAVY RIOT BOMB", SK_RIOT,    22,   0,  4750,  2, 0},
+    {"DIRT CLOD",       SK_DIRT,     8,   0,  5000, 10, 0},
+    {"DIRT BALL",       SK_DIRT,    14,   0,  5000,  5, 0},
+    {"TON OF DIRT",     SK_DIRT,    24,   0,  6750,  2, 0},
+    {"PARACHUTE",       SK_ITEM,     0,   0, 10000,  8, 0},
+    {"BATTERY",         SK_ITEM,     0,   0,  5000, 10, 0},
+    {"SHIELD",          SK_ITEM,     0,   0, 20000,  3, 0}
+}
+NITEMS     = LEN(ITEMS)
+NWEAPONS   = NITEMS - 3
+I_PARACHUTE = NWEAPONS
+I_BATTERY   = NWEAPONS + 1
+I_SHIELD    = NWEAPONS + 2
+SHIELD_STRENGTH = 60
+
+.item_kind      EQUB ITEMS[.., 1]
+.item_radius    EQUB ITEMS[.., 2]
+.item_power     EQUB ITEMS[.., 3]
+.item_price_lo  EQUB LO(ITEMS[.., 4])
+.item_price_hi  EQUB HI(ITEMS[.., 4])
+.item_bundle    EQUB ITEMS[.., 5]
+.item_split     EQUB ITEMS[.., 6]
+.item_names
+FOR i = 0..NITEMS-1
+    EQUS ITEMS[i][0], 0
+NEXT
+
+\ Inventory: inv[inv_base[player] + item].
+.inv_base       EQUB (0..MAXP-1) * NITEMS
+
+\ Print item A's name.
+.print_item_name
+    LDX #LO(item_names) : LDY #HI(item_names)
+\ Print string A of the zero-separated list at (X, Y).
+.print_nth
+    JSR find_nth
+    JMP print_string
+\ Find string A of the zero-separated list at (X, Y): address in A (lo)
+\ and X (hi), and in find_nth.ptr.
+.find_nth
+{
+    ZA_AUTO2 ptr
+    STX ptr : STY ptr+1
+    TAX
+    LDY #0
+.skip
+    DEX : BMI found
+.find
+    LDA (ptr),Y
+    INC ptr : BNE @+ : INC ptr+1 : .@
+    CMP #0 : BNE find
+    JMP skip
+.found
+    LDA ptr : LDX ptr+1
+    RTS
+}
+
+\ X = inventory index of item A for player `cur`.
+.inv_index
+    LDX cur
+    CLC : ADC inv_base,X
+    TAX
+    RTS
+
+\ Select the next weapon player `cur` owns any of (Baby Missiles never
+\ run out).
+.next_weapon
+{
+    ZA_AUTO1 w
+    LDX cur : LDA tank_weapon,X : STA w
+.try
+    INC w : LDA w : CMP #NWEAPONS : BCC @+ : LDA #0 : STA w : .@
+    LDA w : BEQ found
+    JSR inv_index : LDA inv,X : BEQ try
+.found
+    LDX cur : LDA w : STA tank_weapon,X
+    RTS
+}
+
+\ Use up one of player `cur`'s selected weapon; drop back to Baby
+\ Missiles when they run out.
+.use_weapon
+{
+    LDX cur : LDA tank_weapon,X : BEQ done
+    JSR inv_index : DEC inv,X : BNE done
+    LDX cur : LDA #0 : STA tank_weapon,X
+.done
+    RTS
+}
+
+\ ---------------------------------------------------------------------------
+\ Shells in flight. A record is 16 bytes, laid out exactly like the zero
+\ page block the ballistics work on, so a shell is flown by copying it
+\ in, running a frame, and copying it out.
+
+
+ZA_AUTO1 weapon             ; the weapon being fired
+ZA_AUTO1 shell_i            ; the shell being worked on
+
+\ Copy shell X into the zero page block.
+.load_shell
+{
+    STX shell_i
+    TXA : ASL A : ASL A : ASL A : ASL A : TAX
+    LDY #0
+.copy
+    LDA shells,X : STA shell,Y : ZA_INDEXEDBY 0..15
+    INX : INY : CPY #16 : BNE copy
+    RTS
+}
+
+\ Copy the zero page block back into shell shell_i.
+.save_shell
+{
+    LDA shell_i : ASL A : ASL A : ASL A : ASL A : TAX
+    LDY #0
+.copy
+    LDA shell,Y : ZA_INDEXEDBY 0..15 : STA shells,X
+    INX : INY : CPY #16 : BNE copy
+    RTS
+}
+
+\ Put the zero page shell into a free slot, if there is one.
+.spawn_shell
+{
+    LDX #0
+.find
+    LDA sh_active,X : BEQ free
+    INX : CPX #MAXSH : BNE find
+    RTS
+.free
+    LDA #1 : STA sh_active,X
+    LDA #0 : STA sh_drawn,X
+    STX shell_i
+    JMP save_shell
+}
+
+\ Fly every active shell until none are left, dealing with each as it
+\ lands.
+.fly_shells
+{
+    ZA_AUTO1 any, i
+.frame
+    LDA #0 : STA any : STA i
+.shell_loop
+    LDX i : LDA sh_active,X : BEQ next
+    JSR load_shell
+    JSR shell_frame
+    BCC moved
+    \ It landed: take its dot away and let the weapon do its thing.
+    LDX i : LDA #0 : STA sh_active,X
+    JSR undraw_shell
+    JSR land
+    JMP next
+.moved
+    JSR save_shell
+    INC any
+    \ MIRVs split once they start to fall.
+    LDA shot_kind : AND #15 : CMP #SK_MIRV : BNE next
+    LDA shot_vy+2 : BMI next
+    JSR split
+.next
+    INC i : LDA i : CMP #MAXSH : BNE shell_loop
+    LDA any : BEQ done
+    JSR wait_vsync
+    JSR draw_shells
+    JSR flight_sound
+    JMP frame
+.done
+    RTS
+}
+
+\ Redraw every shell's dot at its new position.
+.draw_shells
+{
+    ZA_AUTO1 i
+    LDA #0 : STA i
+.loop
+    LDX i : LDA sh_active,X : BEQ next
+    LDA shot_trail : BNE keep
+    JSR undraw_shell
+.keep
+    LDA i : ASL A : ASL A : ASL A : ASL A : TAY
+    LDA shells+3,Y : BNE next                   ; x off screen
+    LDA shells+7,Y : BNE next                   ; y off screen
+    LDA shells+2,Y : CMP #SCREEN_W : BCS next
+    LDA shells+6,Y : CMP #TOP : BCC next
+    LDX i : STA sh_oldy,X
+    LDA shells+2,Y : STA sh_oldx,X
+    LDA #1 : STA sh_drawn,X
+    LDY sh_oldy,X : LDA sh_oldx,X : TAX
+    LDA shot_colour : JSR plot
+.next
+    INC i : LDA i : CMP #MAXSH : BNE loop
+    RTS
+}
+
+\ Take shell X's dot off the screen, if it is on it.
+.undraw_shell
+{
+    LDA sh_drawn,X : BEQ done
+    LDA #0 : STA sh_drawn,X
+    LDY sh_oldy,X : LDA sh_oldx,X : TAX
+    JMP unplot
+.done
+    RTS
+}
+
+\ The MIRV in the zero page block becomes item_split warheads, fanned out
+\ sideways around its own velocity.
+.split
+{
+    ZA_AUTO1 n, k
+    LDX weapon : LDA item_split,X : STA n
+    LDA #SK_MISSILE : STA shot_kind
+    \ start the fan at vx - (n-1)/2 * spread
+    LDA n : SEC : SBC #1 : LSR A : STA k
+.back
+    LDA k : BEQ go
+    LDA shot_vx : SEC : SBC #LO(SPREAD) : STA shot_vx
+    LDA shot_vx+1 : SBC #HI(SPREAD) : STA shot_vx+1
+    LDA shot_vx+2 : SBC #0 : STA shot_vx+2
+    DEC k : JMP back
+.go
+    \ the first warhead replaces the MIRV itself
+    JSR save_shell
+.more
+    DEC n : BEQ done
+    LDA shot_vx : CLC : ADC #LO(SPREAD) : STA shot_vx
+    LDA shot_vx+1 : ADC #HI(SPREAD) : STA shot_vx+1
+    LDA shot_vx+2 : ADC #0 : STA shot_vx+2
+    JSR spawn_shell
+    JMP more
+.done
+    RTS
+SPREAD = 2200
+}
+
+\ ---------------------------------------------------------------------------
+\ Landing.
+
+\ The shell in the zero page block has landed (hit_kind, hit_x, hit_y).
+.land
+{
+    LDA hit_kind : CMP #HIT_LOST : BNE @+ : RTS : .@
+    LDA hit_x : STA disc_cx
+    LDA hit_y : STA disc_cy
+    LDX weapon
+    LDA item_radius,X : STA expl_r
+    LDA item_power,X : STA blast_power
+    LDA shot_kind : AND #15
+    CMP #SK_TRACER : BEQ none
+    CMP #SK_DIRT : BEQ dirt
+    CMP #SK_RIOT : BEQ riot
+    CMP #SK_ROLLER : BEQ roller
+    CMP #SK_FUNKY : BEQ funky
+    CMP #SK_BOMBLET : BEQ bomblet
+    CMP #SK_LEAP : BEQ leap
+    JMP explosion
+.none
+    RTS
+.dirt
+    JMP dirt_ball
+.riot
+    LDA #0 : STA blast_power
+    JMP explosion
+.roller
+    LDA hit_kind : CMP #HIT_TANK : BEQ @+ : JSR roll : .@
+    JMP explosion
+.bomblet
+    LDA #7 : STA expl_r
+    LDA #50 : STA blast_power
+    JMP explosion
+.funky
+    JSR explosion
+    JMP scatter
+.leap
+    JSR explosion
+    LDA shot_kind : AND #3*HOP : BEQ none
+    SEC : SBC #HOP : ORA #SK_LEAP : STA shot_kind
+    \ bounce: up at half the speed it came down, a bit slower sideways
+    LDA #0 : SEC : SBC shot_vy : STA shot_vy
+    LDA #0 : SBC shot_vy+1 : STA shot_vy+1
+    LDA #0 : SBC shot_vy+2 : STA shot_vy+2
+    LDA shot_vy+2 : CMP #&80 : ROR A : STA shot_vy+2
+    ROR shot_vy+1 : ROR shot_vy
+    LDA hit_y : SEC : SBC #3 : STA shot_y+2
+    LDA #0 : STA shot_y+3
+    JMP spawn_shell
+}
+
+\ A Funky Bomb throws six bomblets up and out from where it burst.
+.scatter
+{
+    ZA_AUTO1 n
+    LDA #6 : STA n
+    LDA disc_cy : SEC : SBC #4 : STA shot_y+2
+.more
+    LDA #SK_BOMBLET : STA shot_kind
+    LDA hit_x : STA shot_x+2
+    LDA #0 : STA shot_x+3 : STA shot_y+3
+    \ vx: random, +-0.25 px/substep; vy: up, 0.25-0.75 rows/substep
+    JSR rand : STA shot_vx+1
+    LDA #0 : STA shot_vx
+    LDA shot_vx+1 : CMP #&80 : ROR A : STA shot_vx+1     ; /2, keeping sign
+    LDA #0 : BIT shot_vx+1 : BPL @+ : LDA #&FF : .@
+    STA shot_vx+2
+    JSR rand : AND #&7F : ORA #&40 : EOR #&FF : STA shot_vy+1
+    LDA #&FF : STA shot_vy+2
+    LDA #0 : STA shot_vy
+    JSR spawn_shell
+    DEC n : BNE more
+    RTS
+}
+
+\ A roller rolls downhill from where it landed until it reaches a valley,
+\ a tank or the edge, and the blast happens there (disc_cx, disc_cy).
+.roll
+{
+    ZA_AUTO1 x, dir
+    LDX hit_x : STX x
+    \ which way is down?
+    LDA ground-1,X : CMP ground+1,X : BEQ stop
+    LDA #1 : BCC @+ : LDA #&FF : .@
+    STA dir
+.step
+    LDA x : CLC : ADC dir : TAX
+    CPX #SCREEN_W : BCS stop                    ; (0 - 1 wraps to 255)
+    LDY x : LDA ground,X : CMP ground,Y : BCC stop  ; uphill: settled
+    \ move the ball
+    LDA x : STA hit_x
+    STX x
+    LDY ground,X : DEY : STY hit_y
+    STX shot_x+2 : STY shot_y+2
+    JSR tank_at : BCS stop
+    LDX x : LDY hit_y : LDA shot_colour : JSR plot
+    JSR wait_vsync
+    LDX x : LDY hit_y : JSR unplot
+    JMP step
+.stop
+    LDA x : STA disc_cx
+    LDX x : LDA ground,X : SEC : SBC #1 : STA disc_cy
+    RTS
+}
+
+\ A ball of dirt lands at (disc_cx, disc_cy), radius expl_r.
+.dirt_ball
+{
+    LDA expl_r : STA disc_r
+    LDA #0 : STA fall_n
+    JSR add_dirt
+    JSR run_falls
+    JSR draw_tanks
+    RTS
+}
