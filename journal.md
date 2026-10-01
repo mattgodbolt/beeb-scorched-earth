@@ -165,3 +165,27 @@ SHA, `+` if the tree was dirty) to baron. It goes into `!BOOT` as a
 `*|` comment and onto the title screen in blue. The SHA is upper-cased
 because the game's font has no lower case. Ship discs from a clean tree:
 commit the source, `make ship`, commit the disc.
+
+## Playtest
+
+A playtest agent played it as a person would (arrow keys, not pokes) and
+measured things. What changed as a result:
+
+- **The Spoiler was murderous**: it hit on 4 of 4 shots in one game. Its
+  power wobble was +-20 in 1000, i.e. none. Now 70 (Cyborg 35, Shooter
+  60). In the next test game the human, firing blind, won round 1.
+- Baby Missile blast power 60 -> 40: three direct hits to kill, not two.
+- **The loser's spiral**: max power is 10x health (faithful), and a loser
+  ended round 1 with $0-$1000, enough for Tracers. Everyone is now paid
+  $2000 a round.
+- Wind is the difference of two 0-15 randoms (x10 on screen), so big
+  winds are rare rather than common.
+- Shop: unaffordable lines were dark blue on black (the Beeb's worst
+  contrast) and went stale after a purchase. Now red, and the whole list
+  is redrawn after buying. Text lines are 7 rows apart instead of 6.
+- 87 seconds of watching Spoilers finish a round after the human died.
+  Now `wait_vsync` returns at once while `ff` is set, which `spectators`
+  sets once every human in the game is dead.
+- The computer swings its turret 2 degrees a frame and pauses less; the
+  status bar names its personality; the barrel is 7 rows, not 5, so the
+  angle can be judged by eye.

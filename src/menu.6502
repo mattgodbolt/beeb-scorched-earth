@@ -41,8 +41,8 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
 .at
 {
     ASL A : ASL A : STA text_x
-    TXA : ASL A : STA text_y
-    ASL A : ADC text_y : STA text_y             ; x6
+    TXA : ASL A : ASL A : ASL A : STA text_y
+    TXA : EOR #&FF : SEC : ADC text_y : STA text_y  ; x7: room between lines
     RTS
 }
 
@@ -144,7 +144,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA #8 : LDX #4 : JSR at
     JSR print_inline : EQUS "THE MOTHER OF ALL GAMES", 0
     LDA #C_CYAN : JSR ink
-    LDA #7 : LDX #37 : JSR at
+    LDA #7 : LDX #31 : JSR at
     JSR print_inline : EQUS "AFTER WENDELL HICKEN 1991", 0
     LDA #C_BLUE : JSR ink
     LDA #0 : LDX #0 : JSR at
@@ -265,6 +265,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     JSR print_inline : EQUS "ITEM             QTY  PRICE OWNED", 0
     LDA #5 : LDX #26 : JSR at
     JSR print_inline : EQUS "RETURN BUYS   SPACE TO FIGHT", 0
+.redraw
     LDA #1 : STA i
 .all
     LDA i : JSR shop_line
@@ -291,8 +292,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
 .notdown
     CMP #KEY_RET : BNE key
     LDA menu_sel : JSR buy : BCC key
-    LDA menu_sel : JSR shop_line
-    JMP money
+    JMP redraw                                  ; what's affordable changed
 .done
     RTS
 }
@@ -306,7 +306,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDX #C_YELLOW : CMP menu_sel : BEQ colour
     LDA item : JSR price : LDX cur : JSR can_afford
     LDX #C_WHITE : BCS colour
-    LDX #C_BLUE
+    LDX #C_RED
 .colour
     TXA : JSR ink
     LDA item : CLC : ADC #4 : TAX : LDA #1 : JSR at
@@ -424,7 +424,8 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     RTS
 }
 
-\ Everyone's money earns interest between rounds: m/16 - m/64, about 5%.
+\ Everyone's money earns interest between rounds - m/16 - m/64, about 5%
+\ - and everyone is paid $2000.
 .interest
 {
     ZA_AUTO1 i
@@ -441,6 +442,9 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     LDA q : SEC : SBC num : STA num
     LDA q+1 : SBC num+1 : STA num+1
     LDA q+2 : SBC num+2 : STA num+2
+    LDX i : JSR money_add
+    \ and a wage, so whoever lost the round can still buy something
+    LDA #4 : JSR five_hundreds
     LDX i : JSR money_add
     INC i : LDA i : CMP num_players : BNE player
     RTS

@@ -64,11 +64,14 @@
 \ Wait for the next vsync.
 .wait_vsync
 {
+    BIT ff : BMI done                           ; fast-forwarding
     LDA vsyncs
 .wait
     CMP vsyncs : BEQ wait
+.done
     RTS
 }
+.ff EQUB 0                  ; bit 7 set: don't wait for anything
 
 \ Wait A frames.
 .wait_frames

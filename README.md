@@ -36,7 +36,7 @@ one of the original's computer personalities:
 | **Moron** | fires at random |
 | **Shooter** | one steep angle, rough power |
 | **Tosser** | wild at first, but improves with every shot |
-| **Spoiler** | tries three angles, aims well |
+| **Spoiler** | tries four angles, including a high lob, and aims well |
 | **Cyborg** | aims better still, and picks on the weakest tank |
 
 SPACE starts.
@@ -71,8 +71,9 @@ round's walls:
 ### The shop
 
 Everyone starts with nothing but unlimited Baby Missiles. Damage earns
-$50 a point, a kill $2,500, winning a round $10,000, and money in the
-bank earns about 5% a round. Prices and bundle sizes are the original's.
+$50 a point, a kill $2,500, winning a round $10,000; everyone is paid
+$2,000 a round, and money in the bank earns about 5%. Prices and bundle
+sizes are the original's. Items you can't afford are shown in red.
 
 | Weapon | |
 |---|---|
@@ -90,6 +91,9 @@ bank earns about 5% a round. Prices and bundle sizes are the original's.
 | Shield | soaks up 60 points of damage (press S) |
 
 ![The shop](docs/img/shop.png)
+
+Once every human is dead, the computers finish the round at full speed.
+A round still going after 50 turns is a draw.
 
 Computer players talk, as they did in the original: lines from its
 TALK1.CFG when they fire and TALK2.CFG when anyone dies.

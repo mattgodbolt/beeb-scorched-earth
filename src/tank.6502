@@ -7,7 +7,7 @@
 
 TANK_HALF   = 3             ; columns either side of tank_x
 TANK_H      = 5             ; rows
-BARREL_LEN  = 5
+BARREL_LEN  = 7
 
 \ Player colours: red, yellow, magenta, cyan, white, blue.
 .player_colours

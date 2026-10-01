@@ -21,7 +21,7 @@ NTYPES  = 6
 \ horizontal, towards the target).
 \ The 80 degree lob is what gets a shell over a mountain in the way:
 \ without it two Spoilers either side of one could stalemate for ever.
-.ai_wobble  EQUB 0, 0, 40, 120, 20, 8
+.ai_wobble  EQUB 0, 0, 60, 120, 70, 35  ; (20 for a Spoiler was murderous)
 .ai_first   EQUB 0, 0, 0, 1, 2, 2       ; index into ai_angles
 .ai_count   EQUB 0, 0, 1, 1, 4, 4
 .ai_angles  EQUB 70, 50, 45, 65, 80, 30
@@ -114,7 +114,8 @@ ZA_AUTO2 ai_power
     LDA tank_angle_was : LDX cur : STA tank_angle,X
     JSR draw_status
 .turn
-    JSR wait_vsync
+    \ two degrees a frame
+    LDX cur : LDA tank_angle,X : LSR A : BCC @+ : JSR wait_vsync : .@
     LDX cur : LDA tank_angle,X : CMP best_angle : BEQ there
     PHP : JSR erase_barrel : PLP
     LDX cur
@@ -124,7 +125,7 @@ ZA_AUTO2 ai_power
     JSR draw_angle
     JMP turn
 .there
-    LDA #25 : JMP wait_frames
+    LDA #10 : JMP wait_frames
 }
 .tank_angle_was EQUB 0
 

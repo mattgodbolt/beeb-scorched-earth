@@ -22,7 +22,7 @@ HOP        = &10
 \ Items, by inventory index (after the weapons).
 \ name, kind, radius (rows), blast power, price ($), bundle, split count
 ITEMS = {
-    {"BABY MISSILE",    SK_MISSILE,  6,  60,   400, 10, 0},
+    {"BABY MISSILE",    SK_MISSILE,  6,  40,   400, 10, 0},
     {"MISSILE",         SK_MISSILE, 10,  90,  1875,  5, 0},
     {"BABY NUKE",       SK_MISSILE, 18, 120, 10000,  3, 0},
     {"NUKE",            SK_MISSILE, 32, 160, 12000,  1, 0},

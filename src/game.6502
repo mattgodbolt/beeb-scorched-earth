@@ -42,7 +42,7 @@ MAX_WIND = 20
 .round
     INC round_no
     JSR new_round
-    LDA #0 : STA turns
+    LDA #0 : STA turns : STA ff
     \ Who goes first rotates round by round.
     LDA round_no
 .first
@@ -60,6 +60,7 @@ MAX_WIND = 20
     JMP game
 .shoot
     JSR fire
+    JSR spectators
     JSR count_alive : CMP #2 : BCC round_over
     \ Computers can stalemate - a tank behind a cliff in a headwind - so
     \ a round that drags on is called a draw.
@@ -72,6 +73,7 @@ MAX_WIND = 20
     LDX #&FF : BNE decided
 .round_over
     \ The last tank standing scores and is paid; then the scores.
+    LDA #0 : STA ff
     LDA #80 : JSR wait_frames
     LDX #&FF
     LDY #0
@@ -95,6 +97,23 @@ MAX_WIND = 20
     JMP game
 }
 
+\ Once every human in the game is dead, nobody wants to watch the
+\ computers finish the round at full speed: fast-forward it.
+.spectators
+{
+    LDX #0 : LDY #0
+.loop
+    LDA tank_type,X : BNE next
+    INY                                         ; a human...
+    LDA tank_alive,X : BNE playing              ; ...still in it
+.next
+    INX : CPX num_players : BNE loop
+    TYA : BEQ playing                           ; (an all-computer game)
+    LDA #&80 : STA ff
+.playing
+    RTS
+}
+
 \ How many tanks are alive? -> A
 .count_alive
 {
@@ -112,9 +131,9 @@ MAX_WIND = 20
     JSR gen_terrain
     JSR make_colours
     \ wind: -MAX_WIND..MAX_WIND, signed
-.windpick
-    JSR rand : AND #63 : CMP #MAX_WIND*2+1 : BCS windpick
-    SEC : SBC #MAX_WIND : STA wind
+    \ wind: the difference of two randoms, so a gale is rarer than a breeze
+    JSR rand : AND #15 : STA wind
+    JSR rand : AND #15 : EOR #&FF : SEC : ADC wind : STA wind
     JSR set_wind
     JSR rand : AND #3 : STA wall_type
     JSR place_tanks
@@ -473,11 +492,12 @@ MAX_WIND = 20
     \ name, in the tank's colour
     LDX cur : LDA tank_colour,X : JSR ink
     LDA #4*24 : STA text_x
-    JSR print_inline : EQUS "PLAYER ", 0
-    LDA cur : CLC : ADC #49 : JSR draw_char
+    LDX cur : JSR print_name
+.namepad
+    LDA #32 : JSR draw_char
+    LDA text_x : CMP #4*34 : BCC namepad
     \ wind
     LDA #C_CYAN : JSR ink
-    LDA #4*33 : STA text_x
     LDA wind : BEQ calm : BPL east
     JSR print_inline : EQUS "<", 0
     LDA wind : EOR #&FF : CLC : ADC #1 : JSR wind_num
