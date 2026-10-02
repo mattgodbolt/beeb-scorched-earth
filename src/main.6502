@@ -29,7 +29,7 @@ ENDSECTION
 SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filename = "SCORCH"
 .payload
     SECTION Code, org = &0E00, guard = screen
-    ZA_POOL &00..&8F
+    ZA_POOL &00..zp_fixed-1     ; zp_fixed..&8F: busy arrays (memory.6502)
 
     .start
         ZA_ENTRY
