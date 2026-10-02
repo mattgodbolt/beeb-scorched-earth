@@ -61,12 +61,18 @@ ZA_AUTO1 span_x0, span_x1
     BCC @+ : INC scr+1 : .@
     INX : INX : BNE whole                       ; (always: X <= 160)
 .tail
-    BNE done                                    ; none
-    LDA fill : LDY row : JMP plot               ; one: a left pixel
-.done
-    LDY row
-    RTS
+    LDA fill : LDY row
+    CPX span_x1 : BEQ plot                      ; one left: a left pixel
+    RTS                                         ; none
 }
+
+\ Draw the whole playfield from the model. From row 0, not TOP: the
+\ status bar's model is black sky, so this clears that too. FLOOR is past
+\ the right edge, which repaint clips.
+.draw_terrain
+    LDA #0 : STA bg_y0 : STA rect_x0
+    LDA #FLOOR : STA bg_y1 : STA rect_x1
+    \ fall through
 
 \ Repaint a rectangle from the model: pixels rect_x0..rect_x1 (clipped
 \ here), rows bg_y0..bg_y1 inclusive, a byte column (two pixels) at a
@@ -75,28 +81,32 @@ ZA_AUTO1 bg_y0, bg_y1
 ZA_AUTO1 rect_x0, rect_x1
 .repaint
 {
-    ZA_AUTO1 c, cend, gl, gr, t, y
+    ZA_AUTO1 c, cend, gl, gr, x
     LDA rect_x1 : CMP #SCREEN_W : BCC @+ : LDA #SCREEN_W-1 : .@
     LSR A : STA cend
     LDA rect_x0 : LSR A : STA c                 ; (callers clip x0 at 0)
 .col
-    LDA c : ASL A : TAX                         ; the column's left pixel
+    LDA c : ASL A : STA x : TAX                 ; the column's left pixel
     LDA ground,X : STA gl
     LDA ground+1,X : STA gr
     LDY bg_y0
 .row
-    JSR pixaddr
-    CPY gl : LDA skyrow,Y : BCC @+ : LDA dirtrow,Y : .@
-    AND #LEFTPIX : STA t
-    CPY gr : LDA skyrow,Y : BCC @+ : LDA dirtrow,Y : .@
-    AND #RIGHTPIX : ORA t
-    STY y : LDY #0 : STA (scr),Y : LDY y
+    LDX x : JSR pixaddr
+    \ Which of the two pixels are dirt picks the pixmasks entry; then
+    \ sky EOR ((sky EOR dirt) AND mask) is dirt under the mask.
+    LDA #0 : CPY gl : ROL A : CPY gr : ROL A : TAX
+    LDA skyrow,Y : EOR dirtrow,Y : AND pixmasks,X : EOR skyrow,Y
+    LDX #0 : STA (scr,X)
+    ZA_INDEXEDBY 0
     CPY bg_y1 : BEQ next
     INY : BNE row                               ; (always: rows end at FLOOR)
 .next
     LDA c : INC c : CMP cend : BNE col
     RTS
 }
+
+\ A byte's pixel bits, indexed by (left pixel) * 2 + (right pixel).
+.pixmasks EQUB 0, RIGHTPIX, LEFTPIX, &FF
 
 \ ---------------------------------------------------------------------------
 \ Discs. Everything round in the game is built from `profile`, the
@@ -114,23 +124,22 @@ ZA_AUTO1 disc_r, disc_cx, disc_cy
     \ The midpoint circle: row dy reaches out to the largest x with
     \ x^2 + dy^2 <= r^2 + r. e tracks r^2 + r - x^2 - dy^2, which stays
     \ within -127..126, so its sign bit says whether x fits.
-    LDA disc_r : STA x : STA e                  ; x = r, dy = 0: e = r
+    LDA disc_r : STA x : STA e                  ; x = r, dy = 0: e = r, so x fits
     LDA #0 : STA dy
-.row
-    LDA e : BPL fits
-.shrink
-    \ x -= 1, so x^2 drops by 2x + 1 (of the new x)
-    DEC x : LDA x : ASL A : SEC : ADC e : STA e
-    BMI shrink
 .fits
     \ profile[dy] = x / 2 to the nearest, halves rounding down
     LDA x : ASL A : ADC #1 : LSR A : LSR A
     LDX dy : STA profile,X
     CPX disc_r : BEQ cols
     \ dy^2 grows by 2dy + 1: e += NOT(2dy) (the ASL clears carry)
-    TXA : ASL A : EOR #&FF : ADC e : STA e
     INC dy
-    JMP row
+    TXA : ASL A : EOR #&FF : ADC e : STA e
+    BPL fits
+.shrink
+    \ x -= 1, so x^2 drops by 2x + 1 (of the new x)
+    DEC x : LDA x : ASL A : SEC : ADC e : STA e
+    BMI shrink
+    BPL fits                                    ; (always)
 .cols
     \ colspan[dx] = the largest dy whose row still reaches dx
     LDY disc_r

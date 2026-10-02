@@ -102,13 +102,3 @@ ZA_AUTO1 terrain_amp
     EQUB lpix(C_BLUE), 0, lpix(C_BLUE) DIV 2, 0
     EQUB lpix(C_BLUE), lpix(C_BLUE) DIV 2, lpix(C_BLUE), lpix(C_BLUE) DIV 2
 }
-
-\ Draw the whole playfield from the model.
-.draw_terrain
-{
-    LDA #TOP : STA bg_y0
-    LDA #FLOOR : STA bg_y1
-    LDA #0 : STA rect_x0
-    LDA #SCREEN_W-1 : STA rect_x1
-    JMP repaint
-}
