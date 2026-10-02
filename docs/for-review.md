@@ -41,3 +41,17 @@ and open questions so far:
 - **Missing weapons and items**: diggers, sandhogs, napalm, liquid dirt,
   lasers, plasma, guidance, fuel/movement, contact triggers, mag
   deflectors, heavy shields. Napalm and liquid dirt are next in line.
+
+## Memory techniques still on the table
+
+- **Packed strings** (Matt's suggestion, the "5/8ths" trick he and Rich
+  used: low bits in nibbles plus a byte of top bits per 8 characters). The
+  text here is ~800 bytes of capitals, space and a little punctuation,
+  i.e. under 32 symbols: a 5-bit code with an escape for digits packs 8
+  characters into 5 bytes, ~300 bytes saved for a ~50-byte decoder. Baron
+  can pack at assembly time with a FUNCTION, so the source keeps plain
+  strings.
+- **A narrower screen**: 152 pixels instead of 160 frees 928 bytes (the
+  structural agent's measurement), at the cost of a 38-column status bar
+  and an own-font title.
+- **Spare zero page**: the allocator only reaches &42; &43-&8F is unused.
