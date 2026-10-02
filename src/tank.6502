@@ -35,8 +35,9 @@ ZA_AUTO1 vec_up, vec_side, vec_left
     STX vec_left
     \ A is now 0-90 either way: the left angles are mirrored
     TAX : LDA sintab,X : STA vec_up
-    TXA : EOR #&FF : SEC : ADC #90 : TAX        ; 90 - a
-    LDA sintab,X : STA vec_side
+    \ cos a = sintab[90 - a]: index with 255 - a from a base 165 lower.
+    TXA : EOR #&FF : TAX
+    LDA sintab+90-255,X : STA vec_side
     RTS
 }
 
@@ -55,37 +56,37 @@ ZA_AUTO1 cur                ; the player a routine is working on
 SHIELD_R = 8
 .draw_shield
 {
-    ZA_AUTO1 dy
-    LDA #SHIELD_R : STA disc_r
+    ZA_AUTO1 dy, t
+    \ Top row down, so dy counts down while the row in Y counts up. (Every
+    \ dot is the same colour: the order doesn't show.)
+    LDA #SHIELD_R : STA disc_r : STA dy
     JSR make_profile
-    LDA #0 : STA dy
+    LDX cur : LDA tank_y,X : SEC : SBC #2+SHIELD_R : TAY
 .row
-    LDX cur : LDA tank_y,X : SEC : SBC #2 : SEC : SBC dy
-    CMP #TOP : BCC next
-    TAY                                         ; (plot preserves Y)
+    CPY #TOP : BCC next                         ; (plot preserves Y)
     LDX dy : LDA profile,X : STA t
     LDX cur : LDA tank_x,X : SEC : SBC t : JSR dot
     LDX cur : LDA tank_x,X : CLC : ADC t : JSR dot
 .next
-    INC dy : LDA dy : CMP #SHIELD_R+1 : BNE row
+    INY
+    DEC dy : BPL row
     RTS
 .dot
     CMP #SCREEN_W : BCS off
     TAX : LDA draw_body.col : JMP plot
 .off
     RTS
-.t EQUB 0
 }
 
 \ Draw the body of tank `cur`.
 .draw_body
 {
-    ZA_AUTO1 row, bits
+    ZA_AUTO1 row, bits, col
     LDX cur
     LDA tank_colour,X : TAY : LDA cbytes,Y : STA col
-    \ Y = y and X = x throughout: plot preserves both.
-    LDA tank_y,X : SEC : SBC #TANK_H-1 : TAY
-    LDA #0 : STA row
+    \ Y = y and X = x throughout: plot preserves both. Bottom row first.
+    LDA tank_y,X : TAY
+    LDA #TANK_H-1 : STA row
 .rowloop
     LDX row : LDA tank_shape,X : STA bits
     LDX cur : LDA tank_x,X : SEC : SBC #TANK_HALF : TAX
@@ -96,17 +97,16 @@ SHIELD_R = 8
 .skip
     INX
     LDA bits : BNE pix
-    INY
-    INC row : LDA row : CMP #TANK_H : BNE rowloop
+    DEY
+    DEC row : BPL rowloop
     RTS
-.col EQUB 0
 }
 
 \ Draw (A = colour byte) or, via erase_barrel, undraw the barrel of
 \ tank `cur` at its current angle.
 .barrel
 {
-    ZA_AUTO1 col, k, px, py
+    ZA_AUTO1 col, k
     ZA_AUTO2 ax, ay
     STA col
     LDX cur
@@ -120,15 +120,18 @@ SHIELD_R = 8
     BCC @+ : INC ax+1 : .@
     LDA ay : CLC : ADC vec_up : STA ay
     BCC @+ : INC ay+1 : .@
-    LDA ax+1 : CLC : ADC #1 : LSR A             ; dx = (ax + 256) / 512
-    BIT vec_left : BPL right
-    EOR #&FF : CLC : ADC #1                     ; pointing left: negate
-.right
-    LDX cur : CLC : ADC tank_x,X : STA px
-    LDA ay : CMP #128 : LDA ay+1 : ADC #0 : STA py  ; dy = (ay + 128) / 256
-    LDA tank_y,X : SEC : SBC #TANK_H-1 : SEC : SBC py : TAY
-    LDX px : CPX #SCREEN_W : BCS skip
+    \ row = tank_y - (TANK_H-1) - dy, dy = (ay + 128) / 256
+    LDX cur
+    LDA ay : CMP #128 : LDA ay+1 : ADC #TANK_H-1
+    EOR #&FF : SEC : ADC tank_y,X : TAY
     CPY #TOP : BCC skip
+    \ column = tank_x +- dx, dx = (ax + 256) / 512 (rounded up)
+    LDA ax+1 : LSR A : ADC #0                   ; (leaves carry clear)
+    BIT vec_left : BPL right
+    EOR #&FF : SEC                              ; pointing left: subtract
+.right
+    ADC tank_x,X : TAX
+    CPX #SCREEN_W : BCS skip
     LDA col : BEQ erase
     JSR plot
     JMP skip
@@ -151,13 +154,13 @@ SHIELD_R = 8
 .erase_tank
 {
     LDX cur
-    LDA tank_x,X : SEC : SBC #TANK_HALF+3
+    LDA tank_x,X : CLC : ADC #TANK_HALF+3 : STA rect_x1
+    SBC #2*(TANK_HALF+3)-1                      ; (carry clear: one more)
     BCS @+ : LDA #0 : .@
     STA rect_x0
-    LDA tank_x,X : CLC : ADC #TANK_HALF+3 : STA rect_x1
-    LDA tank_y,X : SEC : SBC #TANK_H+BARREL_LEN : CMP #TOP : BCS @+ : LDA #TOP : .@
-    STA bg_y0
     LDA tank_y,X : STA bg_y1
+    SEC : SBC #TANK_H+BARREL_LEN : CMP #TOP : BCS @+ : LDA #TOP : .@
+    STA bg_y0
     JMP repaint
 }
 

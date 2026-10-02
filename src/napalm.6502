@@ -14,13 +14,14 @@
 liquid = profile
 ASSERT fall_x - profile >= SCREEN_W
 
-ZA_AUTO1 pour_fire          ; nonzero: napalm; zero: liquid dirt
+ZA_AUTO1 pour_fire          ; bit 7 set: napalm; clear: liquid dirt
 ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
 
-\ Pour expl_r units at hit_x.
+\ Pour expl_r units at hit_x: fire if carry is set, else dirt.
 .pour
 {
     ZA_AUTO1 n, x, lv, left, right, dir
+    ROR A : STA pour_fire
     LDA expl_r : STA n
     LDX #SCREEN_W : LDA #0
 .clear
@@ -34,7 +35,7 @@ ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
     \ The levels here and either side; a screen edge is a wall.
     STX x
     JSR level : STA lv
-    LDA #0 : CPX #0 : BEQ @+ : DEX : JSR level : INX : .@
+    TXA : BEQ @+ : DEX : JSR level : INX : .@   ; (A = 0 at the edge)
     STA left
     LDA #0 : CPX #SCREEN_W-1 : BEQ @+ : INX : JSR level : DEX : .@
     STA right
@@ -42,12 +43,18 @@ ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
     \ tie, keep the way it was going.
     CMP left : BCC lefter : BNE righter
     BIT dir : BMI lefter
+\ Only bit 7 of dir counts. Both CMPs leave carry set, which ROR moves
+\ into it; LSR clears it.
 .righter
     LDA right : CMP lv : BCC settle : BEQ flat
-    LDA #0 : STA dir : INX : JMP flow
+    LSR dir
+.goright
+    INX : BNE flow                              ; (X <= SCREEN_W: never 0)
 .lefter
     LDA left : CMP lv : BCC settle : BEQ flat
-    LDA #&FF : STA dir : DEX : JMP flow
+    ROR dir
+.goleft
+    DEX : JMP flow
 .flat
     \ Level ground: carry on the same way if it stays level, and stop
     \ where it rises. Without this, liquid piles into a cone; with it,
@@ -55,10 +62,10 @@ ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
     \ a step down, so it can't oscillate on a flat.)
     BIT dir : BMI flatleft
     LDA right : CMP lv : BNE settle
-    INX : JMP flow
+    BEQ goright
 .flatleft
     LDA left : CMP lv : BNE settle
-    DEX : JMP flow
+    BEQ goleft
 .settle
     INC liquid,X
     LDY lv : DEY                                ; the new top row
@@ -86,29 +93,27 @@ ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
 \ Napalm: pour, burn whoever it reaches, flicker a while, then go out.
 .napalm
 {
-    ZA_AUTO1 shooter, sum, k
-    LDA #&80 : STA pour_fire
+    ZA_AUTO1 k
     JSR snd_fire
-    JSR pour
+    SEC : JSR pour                              ; fire
     \ Each tank burns in proportion to the fire under it.
-    LDA cur : STA shooter
+    LDA cur : PHA                               ; (the shooter)
     LDX #0
 .tank
     STX cur
     LDA tank_alive,X : BEQ next
-    LDA #0 : STA sum
     LDA tank_x,X : SEC : SBC #TANK_HALF : TAY
-    LDA #2*TANK_HALF+1 : STA k
+    LDA #0 : LDX #2*TANK_HALF+1
 .col
-    LDA liquid,Y : CLC : ADC sum : STA sum
-    INY : DEC k : BNE col
-    LDA sum : BEQ next
-    LDX blast_power : JSR umul8
-    LDA umul8.hi : BEQ @+ : LDA #255 : STA umul8.lo : .@
-    LDA umul8.lo : JSR hurt
+    CLC : ADC liquid,Y
+    INY : DEX : BNE col
+    TAX : BEQ next
+    LDX blast_power : JSR umul8                 ; (returns the high byte)
+    CMP #1 : LDA umul8.lo : BCC @+ : LDA #255 : .@
+    JSR hurt
 .next
     LDX cur : INX : CPX num_players : BNE tank
-    LDA shooter : STA cur
+    PLA : STA cur
     \ Let it burn.
     LDA #40 : STA k
 .burn
@@ -117,8 +122,8 @@ ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
     JSR glow_off
     \ Out: repaint what it covered, from the model (if any of it showed).
     LDA pour_hi : CMP pour_lo : BCC out
+    STA rect_x1
     LDA pour_lo : STA rect_x0
-    LDA pour_hi : STA rect_x1
     LDA pour_top : STA bg_y0
     LDA #FLOOR : STA bg_y1
     JSR repaint
@@ -129,12 +134,11 @@ ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
 \ Liquid dirt: pour, and what settled is ground now.
 .liquid_dirt
 {
-    LDA #0 : STA pour_fire
-    JSR pour
+    CLC : JSR pour                              ; dirt
     LDX #SCREEN_W
 .col
     DEX
-    LDA ground,X : SEC : SBC liquid,X : STA ground,X
+    JSR level : STA ground,X
     TXA : BNE col
     JMP draw_tanks
 }

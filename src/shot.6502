@@ -81,15 +81,15 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDA mul16.r+2 : STA shot_vx+1,X : ZA_INDEXEDBY {0, 4}
     LDA #0 : STA shot_vx+2,X : ZA_INDEXEDBY {0, 4}
     BCC vel_done
-\ Negate velocity X (0 = vx, 4 = vy). Returns its top byte in A.
+\ Negate velocity X (0 = vx, 4 = vy). Returns its top byte in A; trashes
+\ X and Y.
 .negate_vel
     SEC
-    LDA #0 : SBC shot_vx,X : ZA_INDEXEDBY {0, 4}
-    STA shot_vx,X : ZA_INDEXEDBY {0, 4}
-    LDA #0 : SBC shot_vx+1,X : ZA_INDEXEDBY {0, 4}
-    STA shot_vx+1,X : ZA_INDEXEDBY {0, 4}
-    LDA #0 : SBC shot_vx+2,X : ZA_INDEXEDBY {0, 4}
-    STA shot_vx+2,X : ZA_INDEXEDBY {0, 4}
+    LDY #3
+.neg
+    LDA #0 : SBC shot_vx,X : ZA_INDEXEDBY {0, 1, 2, 4, 5, 6}
+    STA shot_vx,X : ZA_INDEXEDBY {0, 1, 2, 4, 5, 6}
+    INX : DEY : BNE neg
 .vel_done
     RTS
 
@@ -101,22 +101,23 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     TYA : ADC shot_vx+2 : STA shot_vx+2
     RTS
 
-\ 16x8 multiply: mul16.m * A -> mul16.r (24 bits).
+\ 16x8 multiply: mul16.m * A -> mul16.r (24 bits). Preserves Y.
 .mul16
 {
     ZA_AUTO2 m
     ZA_AUTO 3, r
-    ZA_AUTO1 mult, t
-    STA mult
-    LDA #0 : STA r : STA r+1 : STA r+2 : STA t
+    \ Shift-add from the bottom: the multiplier starts in r, and the RORs
+    \ push its bits out as the product's low byte comes in.
+    STA r
+    LDA #0 : STA r+1 : STA r+2
     LDX #8
+    LSR r
 .bit
-    ASL r : ROL r+1 : ROL r+2
-    ASL mult : BCC skip
-    LDA r : CLC : ADC m : STA r
-    LDA r+1 : ADC m+1 : STA r+1
-    BCC skip : INC r+2
+    BCC skip
+    LDA r+1 : CLC : ADC m : STA r+1
+    LDA r+2 : ADC m+1 : STA r+2
 .skip
+    ROR r+2 : ROR r+1 : ROR r
     DEX : BNE bit
     RTS
 }
@@ -154,31 +155,32 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     JSR walls : BCS event
     \ Off the side (only possible with no walls): nothing to hit.
     LDA shot_x+3 : BNE next
-    LDA shot_x+2 : CMP #SCREEN_W : BCS next
+    LDX shot_x+2 : CPX #SCREEN_W : BCS next
     \ Above the screen: nothing to hit either.
     LDA shot_y+3 : BMI next
     BNE bottom
     LDA shot_y+2 : CMP #FLOOR : BCS bottom
     CMP #TOP : BCC next
     \ The ground?
-    LDX shot_x+2 : CMP ground,X : BCS ground_hit
+    CMP ground,X : BCS ground_hit
     JSR tank_at : BCC next
     LDX #HIT_TANK : BNE event
 .bottom
-    LDA #FLOOR-1 : STA shot_y+2 : LDA #0 : STA shot_y+3
+    LDA #FLOOR-1 : STA shot_y+2
 .ground_hit
-    LDX #HIT_GROUND : BEQ event
-.next
-    DEC sub : BNE substep
-    \ Wind, once a frame.
-    LDA wind_acc : LDX wind_acc+1 : JSR add_vx
-    CLC
-    RTS
+    \ (shot_y+3 is already 0 unless it came through bottom)
+    LDX #HIT_GROUND : STX shot_y+3
 .event
     STX hit_kind
     LDA shot_x+2 : STA hit_x
     LDA shot_y+2 : STA hit_y
     SEC
+    RTS
+.next
+    DEC sub : BNE substep
+    \ Wind, once a frame.
+    LDA wind_acc : LDX wind_acc+1 : JSR add_vx
+    CLC
     RTS
 }
 
@@ -187,11 +189,13 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
 .fly_quiet
 {
     ZA_AUTO2 frames
-    LDA #0 : STA frames : STA frames+1
+    ASSERT LO(MAX_FRAMES) = 0
+    LDA #0 : STA frames
+    LDA #HI(MAX_FRAMES) : STA frames+1
 .loop
     JSR shell_frame : BCS done
-    INC frames : BNE loop
-    INC frames+1 : LDA frames+1 : CMP #HI(MAX_FRAMES) : BCC loop
+    DEC frames : BNE loop
+    DEC frames+1 : BNE loop
     LDX #HIT_LOST : STX hit_kind
 .done
     RTS
@@ -207,8 +211,10 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDA shot_x+2 : SEC : SBC tank_x,X
     BCS @+ : EOR #&FF : ADC #1 : .@             ; |dx|
     CMP #TANK_HALF+1 : BCS tclear
-    LDA tank_y,X : SEC : SBC shot_y+2
-    CMP #TANK_H : BCS tclear                    ; (above it, or below: wraps)
+    \ With carry clear this is NOT (tank_y - shot_y), which is under TANK_H
+    \ just when the shell is in the tank's rows (below it wraps).
+    LDA shot_y+2 : SBC tank_y,X
+    CMP #256-TANK_H : BCC tclear
     CPX shot_owner : BNE thit
     BIT shot_kind : BMI tnext                   ; still leaving its own tank
 .thit
@@ -217,7 +223,7 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     RTS
 .tclear
     CPX shot_owner : BNE tnext
-    LDA shot_kind : AND #&FF - UNARMED : STA shot_kind
+    ASL shot_kind : LSR shot_kind               ; clear UNARMED (bit 7)
 .tnext
     INX : CPX num_players : BNE tloop
     CLC
@@ -246,16 +252,7 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     \ Bursts on the wall - unless it went over the top of the screen.
     LDA shot_y+3 : BNE lost
     LDA shot_y+2 : CMP #TOP : BCC lost
-    LDX #HIT_GROUND : SEC : RTS
-.wrap
-    TYA : BNE wrap_right
-    LDA shot_x+2 : CLC : ADC #SCREEN_W : STA shot_x+2
-    LDA #0 : STA shot_x+3
-    CLC : RTS
-.wrap_right
-    LDA shot_x+2 : SEC : SBC #SCREEN_W : STA shot_x+2
-    LDA shot_x+3 : SBC #0 : STA shot_x+3
-    CLC : RTS
+    LDX #HIT_GROUND : RTS                       ; (carry set)
 .open
     \ Lost once it is OFFSCREEN pixels out.
     TYA : BNE open_right
@@ -265,6 +262,16 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
 .open_right
     LDA shot_x+3 : BNE lost
     LDA shot_x+2 : CMP #SCREEN_W+OFFSCREEN : BCS lost
+    RTS                                         ; (carry clear)
+.wrap
+    \ Carry is set by each CPY: left adds SCREEN_W, right takes it away.
+    LDA shot_x+2 : CPY #0 : BNE wrap_right
+    ADC #SCREEN_W-1 : LDX #0 : BEQ wrapped
+.wrap_right
+    SBC #SCREEN_W
+    LDX shot_x+3 : BCS wrapped : DEX
+.wrapped
+    STA shot_x+2 : STX shot_x+3
 .stay
     CLC
     RTS
