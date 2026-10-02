@@ -271,12 +271,8 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     JSR draw_status
     JMP release
 .shield
-    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ release
-    LDY cur : LDA tank_shield,Y : BNE release
-    DEC inv,X
-    LDA #SHIELD_STRENGTH : STA tank_shield,Y
+    JSR raise_shield : BCC release
     JSR snd_click
-    JSR draw_tank
     JMP release
 .left
     LDX cur : LDA tank_angle,X : CMP #180 : BCS again
@@ -309,6 +305,22 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 .powered
     JSR draw_power
     JMP frame
+}
+
+\ Tank `cur` raises a shield, if it has one and none is up already: carry
+\ set if it did.
+.raise_shield
+{
+    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ no
+    LDY cur : LDA tank_shield,Y : BNE no
+    DEC inv,X
+    LDA #SHIELD_STRENGTH : STA tank_shield,Y
+    JSR draw_tank
+    SEC
+    RTS
+.no
+    CLC
+    RTS
 }
 
 \ How far one frame of holding up/down moves the power: 1 with SHIFT,
@@ -460,7 +472,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     \ A long fall hurts, unless a parachute opens.
     LDA i : CMP #6 : BCC next
     LDA #I_PARACHUTE : JSR inv_index : LDA inv,X : BEQ splat
-    DEC inv,X : JMP next
+    DEC inv,X : BPL next                        ; (always: 0-98 left)
 .splat
     LDA i : JSR hurt
     JSR draw_tank

@@ -41,11 +41,7 @@ ZA_AUTO2 ai_power
     JSR draw_status
     LDX cur : LDA tank_type,X : STA type
     \ Raise a shield if it has one, and use batteries when weak.
-    LDA tank_shield,X : BNE shielded
-    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ shielded
-    DEC inv,X
-    LDX cur : LDA #SHIELD_STRENGTH : STA tank_shield,X
-    JSR draw_tank
+    JSR raise_shield
 .shielded
     LDX cur : LDA tank_health,X : CMP #70 : BCS charged
     LDA #I_BATTERY : JSR inv_index : LDA inv,X : BEQ charged

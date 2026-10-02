@@ -245,25 +245,23 @@ ENDMACRO
 \ ---------------------------------------------------------------------------
 \ Title and setup.
 
-.title_text
-    EQUS "SCORCHED EARTH"
+\ The OS still thinks the screen starts at &3000, so its text row r lands
+\ on our row r - (32 - SCREEN_ROWS). Big letters, one colour each (COLOUR
+\ 1-6 then round again from 2), on our character row 1: all of it VDU codes.
+TITLE = "SCORCHED EARTH"
+.title_vdu
+    EQUB 31, 3, 1 + 32 - SCREEN_ROWS
+    FOR i = 0..<LEN(TITLE)
+        EQUB 17, (i AND 7) MOD 6 + 1 + (i AND 7) DIV 6, CODES(TITLE)[i]
+    NEXT
 .title_end
 
-\ The OS still thinks the screen starts at &3000, so its text row r lands
-\ on our row r - (32 - SCREEN_ROWS). Big letters, one colour each, on our
-\ character row 1.
 .draw_title
 {
-    LDA #31 : JSR oswrch
-    LDA #3 : JSR oswrch
-    LDA #1 + 32 - SCREEN_ROWS : JSR oswrch
     LDX #0
 .loop
-    TXA : AND #7 : CMP #6 : BCC @+ : SBC #5 : .@
-    CLC : ADC #1 : PHA
-    LDA #17 : JSR oswrch : PLA : JSR oswrch     ; COLOUR 1-6
-    LDA title_text,X : JSR oswrch
-    INX : CPX #title_end - title_text : BNE loop
+    LDA title_vdu,X : JSR oswrch
+    INX : CPX #title_end - title_vdu : BNE loop
     PRINT_AT C_WHITE, 8, 4, "THE MOTHER OF ALL GAMES"
     PRINT_AT C_CYAN, 7, 31, "AFTER WENDELL HICKEN 1991"
     PRINT_AT C_BLUE, 0, 0, build_stamp
@@ -297,7 +295,7 @@ ENDMACRO
     JSR white
     LDA #0 : STA i
 .marker
-    LDA i : JSR menu_line : LDA #5 : JSR at
+    LDA i : ASL A : ADC #8 : TAX : LDA #5 : JSR at
     LDA #32 : LDX i : CPX menu_sel : BNE @+ : LDA #62 : .@
     JSR draw_char
     INC i : LDA i : CMP #MAXP+2 : BNE marker
@@ -342,9 +340,6 @@ ENDMACRO
     RTS
 }
 
-\ The text line for setup item A -> X.
-.menu_line
-    ASL A : ADC #8 : TAX : RTS
 
 \ ---------------------------------------------------------------------------
 \ The shop. Players take turns; the computers just buy.
@@ -521,7 +516,11 @@ ENDMACRO
     \ num = money / 16
     LDX i : JSR get_money
     LDY #4 : JSR shift
-    LDA num : STA q : LDA num+1 : STA q+1 : LDA num+2 : STA q+2
+    LDX #2
+.copy
+    LDA num,X : ZA_INDEXEDBY 0..2
+    STA q,X : ZA_INDEXEDBY 0..2
+    DEX : BPL copy
     LDY #2 : JSR shift                          ; num = money / 64
     LDA q : SEC : SBC num : STA num
     LDA q+1 : SBC num+1 : STA num+1
