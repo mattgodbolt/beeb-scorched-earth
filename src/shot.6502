@@ -129,9 +129,10 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDA #SUBSTEPS : STA sub
 .substep
     \ vy += gravity
-    LDA shot_vy : CLC : ADC #LO(GRAVITY) : STA shot_vy
-    LDA shot_vy+1 : ADC #HI(GRAVITY) : STA shot_vy+1
-    LDA shot_vy+2 : ADC #0 : STA shot_vy+2
+    ASSERT GRAVITY < 256
+    LDA shot_vy : CLC : ADC #GRAVITY : STA shot_vy
+    BCC fallen : INC shot_vy+1 : BNE fallen : INC shot_vy+2
+.fallen
     \ y += vy, then x += vx (sign-extending the velocity's integer byte)
     LDX #4
 .axis
@@ -160,16 +161,15 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDA shot_y+2 : CMP #FLOOR : BCS bottom
     CMP #TOP : BCC next
     \ The ground?
-    LDX shot_x+2 : CMP ground,X : BCC tanks
-    LDX #HIT_GROUND : BEQ event
-.bottom
-    LDA #FLOOR-1 : STA shot_y+2 : LDA #0 : STA shot_y+3
-    LDX #HIT_GROUND : BEQ event
-.tanks
+    LDX shot_x+2 : CMP ground,X : BCS ground_hit
     JSR tank_at : BCC next
     LDX #HIT_TANK : BNE event
+.bottom
+    LDA #FLOOR-1 : STA shot_y+2 : LDA #0 : STA shot_y+3
+.ground_hit
+    LDX #HIT_GROUND : BEQ event
 .next
-    DEC sub : BEQ @+ : JMP substep : .@
+    DEC sub : BNE substep
     \ Wind, once a frame.
     LDA wind_acc : LDX wind_acc+1 : JSR add_vx
     CLC

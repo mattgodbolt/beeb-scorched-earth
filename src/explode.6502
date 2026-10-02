@@ -170,7 +170,7 @@ ZA_AUTO1 row_dy
     JSR wait_vsync : JSR glow
 .nosync
     LDA k : CMP expl_r : BEQ held
-    INC k : JMP ring
+    INC k : BNE ring                            ; (always)
 .held
     LDA #16 : STA k
 .hold
@@ -305,9 +305,8 @@ ZA_AUTO1 fall_b, fall_d
 .frame
     LDA #3 : STA steps
 .step
-    LDA #0 : STA moving
     LDA fall_n : BEQ done
-    LDA #0 : STA i
+    LDA #0 : STA moving : STA i
 .col
     LDX i : LDA fall_dist,X : BEQ next
     DEC fall_dist,X
