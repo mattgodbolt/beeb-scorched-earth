@@ -32,29 +32,6 @@ E_FANFARE = 20
     EQUB &01, 3, 149,  8
 .snd_tab_end
 
-\ Play snd_tab entry X. A zero in the entry leaves that field of sblk as
-\ the caller set it, which is how pitch and duration are passed in.
-.snd_play
-{
-    LDY #0
-.copy
-    LDA snd_tab,X : BEQ keep
-    STA sblk,Y
-.keep
-    INX : INY : INY
-    CPY #8 : BNE copy
-    LDX #LO(sblk) : LDY #HI(sblk)
-    LDA #7 : JMP osword
-}
-
-.snd_fire
-    LDX #E_FIRE : BPL snd_play
-
-.snd_click
-    LDX #E_CLICK : BPL snd_play
-
-.snd_die
-    LDX #E_DIE : BPL snd_play
 
 \ Explosion of radius A rows (5..36). Bigger is longer and, through the
 \ noise channel's three white-noise rates, lower.
@@ -67,6 +44,19 @@ E_FANFARE = 20
     LSR A : ADC #2 : STA sblk+6 ; 4..20 twentieths of a second
     LDX #E_BOOM : BPL snd_play
 }
+
+\ Round won: four rising notes, queued on channel 1 to play out by
+\ themselves.
+.snd_fanfare
+{
+    LDA #E_FANFARE
+.loop
+    PHA : TAX : JSR snd_play
+    PLA : CLC : ADC #4
+    CMP #snd_tab_end - snd_tab : BNE loop
+}
+.snd_done
+    RTS
 
 \ Once a frame in flight: a whistle whose pitch follows the shell's height,
 \ a semitone every 8 rows. A new note goes out when the pitch moves by a
@@ -84,23 +74,33 @@ E_FANFARE = 20
 .play
     AND #&FC
     CMP sblk+4 : BNE new
-    LDA vsyncs : AND #3 : BNE done
-    LDA sblk+4
+    LDA vsyncs : AND #3 : BNE snd_done
+    BEQ again                   ; (always) the same note, already in sblk
 .new
     STA sblk+4
-    LDX #E_WHISTLE : BPL snd_play
-.done
-    RTS
+.again
 }
+\ The routines that just choose an entry fall into snd_play, each BITABS
+\ swallowing the LDX of the next.
+    LDX #E_WHISTLE : BITABS
+.snd_fire
+    LDX #E_FIRE : BITABS
+.snd_click
+    LDX #E_CLICK : BITABS
+.snd_die
+    LDX #E_DIE
 
-\ Round won: four rising notes, queued on channel 1 to play out by
-\ themselves.
-.snd_fanfare
+\ Play snd_tab entry X. A zero in the entry leaves that field of sblk as
+\ the caller set it, which is how pitch and duration are passed in.
+.snd_play
 {
-    LDA #E_FANFARE
-.loop
-    PHA : TAX : JSR snd_play
-    PLA : CLC : ADC #4
-    CMP #snd_tab_end - snd_tab : BNE loop
-    RTS
+    LDY #0
+.copy
+    LDA snd_tab,X : BEQ keep
+    STA sblk,Y
+.keep
+    INX : INY : INY
+    CPY #8 : BNE copy
+    LDX #LO(sblk) : LDY #HI(sblk)
+    LDA #7 : JMP osword
 }

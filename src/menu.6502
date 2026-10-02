@@ -83,18 +83,6 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
     RTS
 }
 
-\ Print packed text from tptr.
-.print_packed
-{
-    LDA #&80 : STA tbits
-.loop
-    JSR unpack : BEQ done
-    JSR draw_char
-    JMP loop
-.done
-    RTS
-}
-
 \ Point tptr at packed string A of the list at (X lo, Y hi), unpacking its
 \ way past the ones before it. Leaves X = &FF.
 .packed_nth
@@ -112,27 +100,37 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
 
 \ Print packed string A of the list at (X, Y).
 .print_packed_nth
-    JSR packed_nth : JMP print_packed
+    JSR packed_nth
+    \ (on into print_packed)
+
+\ Print packed text from tptr.
+.print_packed
+{
+    LDA #&80 : STA tbits
+.loop
+    JSR unpack : BEQ done
+    JSR draw_char : BNE loop                    ; (A = text_x, never 0)
+.done
+    RTS
+}
 
 \ Print packed text given inline after the JSR, as print_inline once did:
 \     JSR print6 : PACKED "TEXT"
 \ or put it somewhere in some colour first:
-\     JSR print_at : EQUB colour, x, y : PACKED "TEXT"
+\     JSR print_at : EQUB x, y, colour : PACKED "TEXT"
 \ with x and y in pixels. Most of the text on the screens between rounds
 \ is placed like this; the PRINT_AT macro takes columns and lines.
 .print_at
-    SEC : BCS inline
+    SEC : BITZP                                 ; (swallows the CLC)
 .print6
     CLC
-.inline
 {
     PLA : STA tptr : PLA : STA tptr+1           ; (carry survives to BCC)
     JSR fetch                                   ; the JSR's own last byte
     BCC text
-    JSR fetch : PHA
     JSR fetch : STA text_x
     JSR fetch : STA text_y
-    PLA : JSR ink
+    JSR fetch : JSR ink
 .text
     JSR print_packed
     JMP (tptr)                                  ; just past the text
@@ -145,8 +143,8 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
     ZA_AUTO1 to
     STA to
 .pad
-    LDA #32 : JSR draw_char
-    LDA text_x : CMP to : BCC pad
+    LDA #32 : JSR draw_char                     ; -> A = text_x
+    CMP to : BCC pad
     RTS
 }
 
@@ -154,22 +152,24 @@ MACRO PRINT6 text
     JSR print6 : PACKED text
 ENDMACRO
 MACRO PRINT_XY colour, x, y, text
-    JSR print_at : EQUB colour, x, y : PACKED text
+    JSR print_at : EQUB x, y, colour : PACKED text
 ENDMACRO
 MACRO PRINT_AT colour, col, line, text
     PRINT_XY colour, col * 4, line * 7, text
 ENDMACRO
 
-\ Print player X's name: "PLAYER 1", or the personality for a computer.
+\ Print player X's name in its colour: "PLAYER 1", or the personality for
+\ a computer.
 .print_name
 {
     ZA_AUTO1 t
     STX t
-    LDA tank_type,X
+    LDA tank_colour,X : JSR ink
+    LDX t : LDA tank_type,X
     LDX #LO(type_names) : LDY #HI(type_names)
     JSR print_packed_nth
     LDA #32 : JSR draw_char
-    LDA t : CLC : ADC #49 : JMP draw_char
+    LDA t : ADC #49 : JMP draw_char             ; (draw_char leaves carry clear)
 }
 .type_names
     PACKED "PLAYER" : PACKED "MORON" : PACKED "SHOOTER"
@@ -179,13 +179,15 @@ ENDMACRO
 .times3
     EQUB (0..MAXP-1) * 3
 
-\ num = player X's money, and X = where it is in tank_money.
+\ num = player X's money.
 .get_money
-    LDA times3,X : TAX
-    LDA tank_money,X : STA num
-    LDA tank_money+1,X : STA num+1
-    LDA tank_money+2,X : STA num+2
+{
+    LDY times3,X : LDX #0
+.copy
+    LDA tank_money,Y : STA num,X : ZA_INDEXEDBY 0..2
+    INY : INX : CPX #3 : BNE copy
     RTS
+}
 
 \ Print player X's money in 7 columns, with a dollar sign.
 .print_money
@@ -193,30 +195,38 @@ ENDMACRO
     LDA #36 : JSR draw_char            ; $
     LDA #6 : JMP print_num
 
-\ Player X gains num dollars.
-.money_add
-    LDA times3,X : TAX
-    LDA tank_money,X : CLC : ADC num : STA tank_money,X
-    LDA tank_money+1,X : ADC num+1 : STA tank_money+1,X
-    LDA tank_money+2,X : ADC num+2 : STA tank_money+2,X
-    RTS
-
-\ Carry set if player X has num dollars, with X = where the money is in
+\ Carry set if player X has num dollars, with Y = where the money is in
 \ tank_money.
 .can_afford
-    LDA times3,X : TAX
-    LDA tank_money,X : CMP num
-    LDA tank_money+1,X : SBC num+1
-    LDA tank_money+2,X : SBC num+2
+    LDY times3,X
+    LDA tank_money,Y : CMP num
+    LDA tank_money+1,Y : SBC num+1
+    LDA tank_money+2,Y : SBC num+2
     RTS
 
 \ Player X pays num dollars if they can: carry set if paid, clear (and
 \ nothing taken) if not.
 .money_pay
     JSR can_afford : BCC poor
-    LDA tank_money,X : SBC num : STA tank_money,X   ; (carry is set)
-    LDA tank_money+1,X : SBC num+1 : STA tank_money+1,X
-    LDA tank_money+2,X : SBC num+2 : STA tank_money+2,X
+    \ Taking num away is adding its complement with the carry set, which
+    \ it is: the money_add loop does both.
+    LDA #&FF : BNE add_money
+
+\ Player X gains num dollars.
+.money_add
+    LDY times3,X
+    LDA #0 : CLC
+\ Add num EOR A (0 or &FF) and the carry to the money at tank_money+Y.
+.add_money
+{
+    ZA_AUTO1 flip
+    STA flip
+    LDX #0
+.byte
+    LDA num,X : ZA_INDEXEDBY 0..2
+    EOR flip : ADC tank_money,Y : STA tank_money,Y
+    INY : INX : TXA : EOR #3 : BNE byte         ; (not CPX: it would lose the carry)
+}
 .poor
     RTS
 
@@ -233,9 +243,15 @@ ENDMACRO
     TXA
 \ num = mul16.m * A.
 .times16
+{
     JSR mul16
-    LDA mul16.r : STA num : LDA mul16.r+1 : STA num+1 : LDA mul16.r+2 : STA num+2
+    LDX #2
+.copy
+    LDA mul16.r,X : ZA_INDEXEDBY 0..2
+    STA num,X : ZA_INDEXEDBY 0..2
+    DEX : BPL copy
     RTS
+}
 
 \ num = A * 500.
 .five_hundreds
@@ -246,20 +262,27 @@ ENDMACRO
 \ Title and setup.
 
 \ The OS still thinks the screen starts at &3000, so its text row r lands
-\ on our row r - (32 - SCREEN_ROWS). Big letters, one colour each (COLOUR
-\ 1-6 then round again from 2), on our character row 1: all of it VDU codes.
-TITLE = "SCORCHED EARTH"
+\ on our row r - (32 - SCREEN_ROWS). Big letters on our character row 1,
+\ one colour each: letter i is in COLOUR (i AND 7) + 1, or (i AND 7) - 4
+\ from 6 on (1-6, then round again from 2).
 .title_vdu
     EQUB 31, 3, 1 + 32 - SCREEN_ROWS
-    FOR i = 0..<LEN(TITLE)
-        EQUB 17, (i AND 7) MOD 6 + 1 + (i AND 7) DIV 6, CODES(TITLE)[i]
-    NEXT
+.title_text
+    EQUS "SCORCHED EARTH"
 .title_end
 
+\ Clear the screen and put the title on it.
 .draw_title
 {
+    JSR cls
     LDX #0
 .loop
+    CPX #title_text - title_vdu : BCC plain
+    LDA #17 : JSR oswrch                        ; (OSWRCH keeps X)
+    TXA : SEC : SBC #title_text - title_vdu     ; i
+    AND #7 : CMP #6 : BCC @+ : SBC #6 : .@      ; (and SBC sets it again)
+    ADC #1 : JSR oswrch
+.plain
     LDA title_vdu,X : JSR oswrch
     INX : CPX #title_end - title_vdu : BNE loop
     PRINT_AT C_WHITE, 8, 4, "THE MOTHER OF ALL GAMES"
@@ -273,32 +296,31 @@ TITLE = "SCORCHED EARTH"
 .setup
 {
     ZA_AUTO1 i
-    JSR cls
     JSR draw_title
     LDA #0 : STA menu_sel
 .redraw
-    PRINT_AT C_YELLOW, 7, 8, "PLAYERS "
-    LDA num_players : LDX #2 : JSR print_byte
-    PRINT_AT C_YELLOW, 7, 10, "ROUNDS  "
-    LDA num_rounds : LDX #2 : JSR print_byte
+    \ (wider number fields print the spaces, which is shorter than packing
+    \ them)
+    PRINT_AT C_YELLOW, 7, 8, "PLAYERS"
+    LDA num_players : LDX #3 : JSR print_byte
+    PRINT_AT C_YELLOW, 7, 10, "ROUNDS"
+    LDA num_rounds : LDX #4 : JSR print_byte
+    \ a line for each menu item: the marker, then for a player its name
     LDA #0 : STA i
-.player
-    LDA i : ASL A : ADC #12 : TAX : LDA #7 : JSR at
-    LDX i : CPX num_players : BCS blank
-    LDA tank_colour,X : JSR ink
-    LDX i : JSR print_name
+.item
+    LDA i : ASL A : ADC #8 : TAX : LDA #5 : JSR at
+    JSR white
+    LDA #32 : LDX i : CPX menu_sel : BNE @+ : LDA #62 : .@
+    JSR draw_char
+    JSR draw_char                               ; (A = text_x: a space)
+    LDX i : DEX : DEX : BMI next                ; the two settings
+    CPX num_players : BCS blank
+    JSR print_name
 .blank
     \ spaces rub out a longer name, or a player no longer in the game
     LDA #4*18 : JSR pad_to
-    INC i : LDA i : CMP #MAXP : BNE player
-    \ the marker
-    JSR white
-    LDA #0 : STA i
-.marker
-    LDA i : ASL A : ADC #8 : TAX : LDA #5 : JSR at
-    LDA #32 : LDX i : CPX menu_sel : BNE @+ : LDA #62 : .@
-    JSR draw_char
-    INC i : LDA i : CMP #MAXP+2 : BNE marker
+.next
+    INC i : LDA i : CMP #MAXP+2 : BNE item
     PRINT_AT C_WHITE, 4, 26, "UP/DOWN CHOOSE  LEFT/RIGHT CHANGE"
     PRINT_AT C_WHITE, 11, 28, "SPACE TO START"
 .key
@@ -308,32 +330,30 @@ TITLE = "SCORCHED EARTH"
     LDX menu_sel
     CMP #KEY_UP : BNE @+ : DEX : BMI key : BPL select : .@
     CMP #KEY_DOWN : BNE @+
-    LDA num_players : CLC : ADC #2 : STA i      ; items: 2 settings + players
-    INX : CPX i : BCS key
-.select
-    STX menu_sel : JMP redraw : .@
-    CMP #KEY_LEFT : BEQ change
-    CMP #KEY_RIGHT : BNE key
-    LDY #1 : BNE adjust
-.change
-    LDY #&FF
-.adjust
-    \ Y = +1 or -1 to the selected setting
-    STY i
-    CPX #0 : BNE rounds
-    LDA num_players : CLC : ADC i
+    \ items: 2 settings + players, so the last is num_players + 1
+    CPX num_players : BEQ down : BCS key
+.down
+    INX : BNE select : .@                       ; (always)
+    SEC : SBC #KEY_LEFT : CMP #2 : BCS key      ; 0 left, 1 right
+    \ -1 or +1 to the selected setting, as i + carry: &FF + 0 or 0 + 1
+    SBC #0 : STA i
+    DEX : BPL rounds
+    LDA num_players : ADC i
     CMP #2 : BCC key : CMP #MAXP+1 : BCS key
     STA num_players : BCC again                 ; (always)
 .rounds
-    CPX #1 : BNE type
-    LDA num_rounds : CLC : ADC i
+    DEX : BPL type
+    LDA num_rounds : ADC i
     BEQ key : CMP #100 : BCS key
     STA num_rounds : BCC again                  ; (always)
 .type
-    LDA tank_type-2,X : CLC : ADC i
+    LDA tank_type,X : ADC i                     ; (X = the player now)
     BPL @+ : LDA #NTYPES-1 : .@
     CMP #NTYPES : BCC @+ : LDA #0 : .@
-    STA tank_type-2,X
+    STA tank_type,X
+    BITABS                                      ; (swallows the STX)
+.select
+    STX menu_sel
 .again
     JMP redraw
 .go
@@ -350,7 +370,7 @@ TITLE = "SCORCHED EARTH"
 .player
     LDX cur : LDA tank_type,X : BEQ human
     JSR ai_shop
-    JMP next
+    BEQ next                                    ; (ai_shop leaves Z set)
 .human
     JSR shop_human
 .next
@@ -362,13 +382,14 @@ TITLE = "SCORCHED EARTH"
 {
     ZA_AUTO1 i
     JSR cls
-    LDA #1 : STA menu_sel
-    LDX cur : LDA tank_colour,X : JSR ink
     \ (26 items: the list starts on line 2 to fit them all)
-    LDA #1 : LDX #0 : JSR at
+    LDA #1 : STA menu_sel
+    LDX #0 : JSR at                             ; (A = 1: column 1)
     LDX cur : JSR print_name
     PRINT6 " GOES SHOPPING"
-    PRINT_AT C_CYAN, 1, 1, "ITEM             QTY  PRICE OWNED"
+    \ (a run of spaces costs more than another PRINT_AT)
+    PRINT_AT C_CYAN, 1, 1, "ITEM"
+    PRINT_AT C_CYAN, 18, 1, "QTY  PRICE OWNED"
     PRINT_AT C_CYAN, 5, 30, "RETURN BUYS   SPACE TO FIGHT"
 .redraw
     LDA #1 : STA i
@@ -396,7 +417,7 @@ TITLE = "SCORCHED EARTH"
 .notdown
     CMP #KEY_RET : BNE key
     LDA menu_sel : JSR buy : BCC key
-    JMP redraw                                  ; what's affordable changed
+    BCS redraw                                  ; what's affordable changed
 .done
     RTS
 }
@@ -413,7 +434,7 @@ TITLE = "SCORCHED EARTH"
     LDX #C_RED
 .colour
     TXA : JSR ink
-    LDA item : CLC : ADC #1 : TAX : LDA #1 : JSR at
+    LDX item : INX : LDA #1 : JSR at
     ASSERT NITEMS <= 29                         ; (or the shop runs off the screen)
     LDA item : JSR print_item_name
     LDA #4*18 : JSR pad_to
@@ -440,9 +461,10 @@ TITLE = "SCORCHED EARTH"
     ZA_AUTO1 t
     STA t
     JSR inv_index : LDA inv,X : CMP #99 : BCS no
+    TXA : PHA                                   ; where it goes, for later
     LDA t : JSR price
-    LDX cur : JSR money_pay : BCC no
-    LDA t : JSR inv_index
+    LDX cur : JSR money_pay
+    PLA : TAX : BCC no
     LDY t : LDA inv,X : CLC : ADC item_bundle,Y
     CMP #99 : BCC @+ : LDA #99 : .@
     STA inv,X
@@ -479,23 +501,21 @@ TITLE = "SCORCHED EARTH"
     ZA_AUTO1 i, winner
     STA winner
     JSR cls
-    PRINT_AT C_WHITE, 13, 3, "ROUND "
-    LDA round_no : LDX #2 : JSR print_byte
-    PRINT6 " OF "
-    LDA num_rounds : LDX #2 : JSR print_byte
+    PRINT_AT C_WHITE, 13, 3, "ROUND"            ; (the spaces: in the fields)
+    LDA round_no : LDX #3 : JSR print_byte
+    PRINT6 " OF"
+    LDA num_rounds : LDX #3 : JSR print_byte
     LDA #12 : LDX #6 : JSR at
     LDX winner : BMI nobody
-    LDA tank_colour,X : JSR ink
-    LDX winner : JSR print_name
+    JSR print_name
     PRINT6 " WINS"
-    JMP table
+    BEQ table                                   ; (print6 leaves Z set)
 .nobody
     PRINT6 "NOBODY WINS"
 .table
     PRINT_AT C_CYAN, 6, 10, "PLAYER       SCORE    MONEY"
     LDA #0 : STA i
 .row
-    LDX i : LDA tank_colour,X : JSR ink
     LDA i : ASL A : ADC #12 : TAX : LDA #6 : JSR at
     LDX i : JSR print_name
     LDA #4*20 : STA text_x
@@ -512,22 +532,16 @@ TITLE = "SCORCHED EARTH"
 .interest
 {
     ZA_AUTO1 i
-    ZA_AUTO 3, q
     LDA #0 : STA i
 .player
-    \ num = money / 16
+    \ add money / 16
     LDX i : JSR get_money
     LDY #4 : JSR shift
-    LDX #2
-.copy
-    LDA num,X : ZA_INDEXEDBY 0..2
-    STA q,X : ZA_INDEXEDBY 0..2
-    DEX : BPL copy
-    LDY #2 : JSR shift                          ; num = money / 64
-    LDA q : SEC : SBC num : STA num
-    LDA q+1 : SBC num+1 : STA num+1
-    LDA q+2 : SBC num+2 : STA num+2
     LDX i : JSR money_add
+    \ and take away money / 64 (unconditionally, unlike money_pay)
+    LDY #2 : JSR shift
+    LDX i : LDY times3,X
+    LDA #&FF : SEC : JSR add_money
     \ and a wage, so whoever lost the round can still buy something
     LDA #4 : JSR five_hundreds
     LDX i : JSR money_add
@@ -547,9 +561,7 @@ TITLE = "SCORCHED EARTH"
 .find
     LDA tank_score,X : LDY best : CMP tank_score,Y : BCC @+ : STX best : .@
     INX : CPX num_players : BNE find
-    JSR cls
     JSR draw_title
-    LDX best : LDA tank_colour,X : JSR ink
     LDA #9 : LDX #12 : JSR at
     LDX best : JSR print_name
     PRINT6 " IS CHAMPION"
