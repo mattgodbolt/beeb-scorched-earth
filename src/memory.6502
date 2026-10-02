@@ -6,7 +6,7 @@
 \ ***************************************************************************
 
 \ The bottom of the stack page. The stack itself never gets near it.
-SECTION StackLow, org = &0100, guard = &0180
+SECTION StackLow, org = &0100, guard = &01A0   ; (the stack never got below &01D1)
 .inv            SKIP MAXP * NITEMS      ; inventory: inv[inv_base[p] + item]
 ENDSECTION
 

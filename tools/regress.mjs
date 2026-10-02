@@ -67,7 +67,7 @@ for (const [w, wall, plo_, phi_, angOverride, shield] of configs) {
     if (shotDir) await b.shot(`${shotDir}/${name}_${f}.png`);
   }
   const mem = [...await b.read("ground", 161), ...await b.read("tank_health", 6), ...await b.read("tank_money", 18),
-    ...await b.read("tank_x", 6), ...await b.read("tank_y", 6), ...await b.read("tank_shield", 6), ...await b.read("inv", 6 * 20)];
+    ...await b.read("tank_x", 6), ...await b.read("tank_y", 6), ...await b.read("tank_shield", 6), ...await b.read("inv", 6 * b.syms.NITEMS)];
   lines.push(`${name} ${createHash("sha1").update(Buffer.from(mem)).digest("hex")} health ${mem.slice(161, 163)}`);
 }
 fs.writeFileSync(out, lines.join("\n") + "\n");

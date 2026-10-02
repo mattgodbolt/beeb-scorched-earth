@@ -19,9 +19,12 @@ MAX_WIND = 20
     \ However long the setup took is as good a random seed as any.
     LDA vsyncs : EOR seed : STA seed
     \ Everyone starts with nothing but Baby Missiles.
-    LDX #MAXP*NITEMS-1 : LDA #0
+    \ (Counted down to zero, not with BPL: the table is more than 128
+    \ bytes, and a BPL loop from 137 stops after one byte.)
+    LDX #MAXP*NITEMS : LDA #0
 .empty
-    STA inv,X : DEX : BPL empty
+    DEX : STA inv,X : BNE empty
+    ASSERT MAXP*NITEMS <= 256
     LDX #MAXP*3-1
 .broke
     STA tank_money,X : DEX : BPL broke

@@ -230,3 +230,27 @@ health, money, positions, shields and inventory after each. The fully
 merged build matches the pre-team baseline exactly. That file is now
 `tools/regress.baseline.txt`; a deliberate behaviour change means
 regenerating it.
+
+## Napalm and Liquid Dirt
+
+Spent ~420 of the freed bytes on three items sharing one `pour` routine
+(`napalm.6502`). Each unit of liquid runs over the heightmap to the lower
+neighbour, counting liquid already settled, and settles where neither
+side is lower.
+
+- **First version made cones, not pools.** "Stop when no neighbour is
+  strictly lower" piles units with a slope of one row per column. Fix: on
+  a level stretch a unit keeps going the way it was travelling and stops
+  only where that way rises. Pools then fill level from their edges, and
+  since a unit only turns round after a step down, it can't oscillate.
+- Fire is drawn in the glow colours (C_HOT + row & 7), so it ripples in
+  bands for free while `glow` runs, and burns each tank by the liquid in
+  its seven columns.
+- **Adding three items broke the inventory clear**: `LDX #MAXP*NITEMS-1 :
+  ... DEX : BPL` from 137 stops after one byte, because 137 is negative to
+  BPL. Every game then started with whatever was in the stack page as
+  stock: computers firing Heavy Rollers in round 1, counts of 253. Now a
+  count-to-zero loop with an ASSERT on the size. The soak test caught it,
+  because computers spend what they think they have.
+- The regression baseline was regenerated: the inventory it hashes is now
+  23 items a player, read using the size from the symbols.

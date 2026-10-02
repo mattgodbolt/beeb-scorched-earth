@@ -86,6 +86,8 @@ sizes are the original's. Items you can't afford are shown in red.
 | Baby Roller, Roller, Heavy Roller | roll downhill into a valley, or a tank |
 | Riot Bomb, Heavy Riot Bomb | blow away dirt, hurt nobody |
 | Dirt Clod, Dirt Ball, Ton of Dirt | bury people |
+| Napalm, Hot Napalm | pour burning liquid that runs downhill and pools; anyone standing in it burns |
+| Liquid Dirt | pours like napalm, but sets as ground: fills craters, buries tanks |
 | Parachute | opens by itself when you fall far enough to hurt |
 | Battery | +10 health (press B) |
 | Shield | soaks up 60 points of damage (press S) |
@@ -101,7 +103,7 @@ TALK1.CFG when they fire and TALK2.CFG when anyone dies.
 ## What was left out
 
 Scorched Earth is a big game; a 32K machine with 20K of screen gets the
-heart of it. Gone: diggers, sandhogs, napalm, lasers and plasma (the
+heart of it. Gone: diggers, sandhogs, lasers and plasma (the
 terrain is a heightmap, so nothing can tunnel - see DESIGN.md), guidance
 systems, fuel and tank movement, simultaneous play, teams, and the
 original's dozens of options. Turned on and fixed: falling dirt, falling

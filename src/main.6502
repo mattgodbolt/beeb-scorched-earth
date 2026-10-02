@@ -43,6 +43,7 @@ SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filena
     INCLUDE "shot.6502"
     INCLUDE "explode.6502"
     INCLUDE "weapons.6502"
+    INCLUDE "napalm.6502"
     INCLUDE "ai.6502"
     INCLUDE "menu.6502"
     INCLUDE "talk.6502"

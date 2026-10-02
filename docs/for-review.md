@@ -38,9 +38,12 @@ and open questions so far:
 - **Turn order.** Rotates each round; the original defaults to random.
 - **Shields** absorb 60 damage then go; no deflection, no shield-on-
   direct-hit rule.
-- **Missing weapons and items**: diggers, sandhogs, napalm, liquid dirt,
-  lasers, plasma, guidance, fuel/movement, contact triggers, mag
-  deflectors, heavy shields. Napalm and liquid dirt are next in line.
+- **Missing weapons and items**: diggers, sandhogs, lasers, plasma,
+  guidance, fuel/movement, contact triggers, mag deflectors, heavy
+  shields. (Napalm, Hot Napalm and Liquid Dirt went in after the memory
+  team freed space.)
+- **Napalm strength**: 70 units x 2 damage (Hot: 120 x 3). Firing it into
+  your own valley kills you, as it should; tune once played.
 
 ## Memory techniques still on the table
 

@@ -15,12 +15,16 @@ SK_FUNKY   = 5              ; explode and scatter bomblets
 SK_BOMBLET = 6              ; a funky bomb's bomblet
 SK_LEAP    = 7              ; explode and hop on
 SK_MIRV    = 8              ; split at the top of the arc
+SK_NAPALM  = 9              ; pour fire (napalm.6502)
+SK_LIQUID  = 10             ; pour dirt (napalm.6502)
 SK_ITEM    = 15             ; not a weapon at all
 UNARMED    = &80
 HOP        = &10
 
 \ Items, by inventory index (after the weapons).
 \ name, kind, radius (rows), blast power, price ($), bundle, split count
+\ (for napalm and liquid dirt, "radius" is how many units are poured and
+\ "power" the damage a unit of fire does to a tank standing in it)
 ITEMS = {
     {"BABY MISSILE",    SK_MISSILE,  6,  40,   400, 10, 0},
     {"MISSILE",         SK_MISSILE, 10,  90,  1875,  5, 0},
@@ -39,6 +43,9 @@ ITEMS = {
     {"DIRT CLOD",       SK_DIRT,     8,   0,  5000, 10, 0},
     {"DIRT BALL",       SK_DIRT,    14,   0,  5000,  5, 0},
     {"TON OF DIRT",     SK_DIRT,    24,   0,  6750,  2, 0},
+    {"NAPALM",          SK_NAPALM,  70,   2, 10000, 10, 0},
+    {"HOT NAPALM",      SK_NAPALM, 120,   3, 20000,  2, 0},
+    {"LIQUID DIRT",     SK_LIQUID, 100,   0,  5000, 10, 0},
     {"PARACHUTE",       SK_ITEM,     0,   0, 10000,  8, 0},
     {"BATTERY",         SK_ITEM,     0,   0,  5000, 10, 0},
     {"SHIELD",          SK_ITEM,     0,   0, 20000,  3, 0}
@@ -53,6 +60,7 @@ SHIELD_STRENGTH = 60
 \ table of split counts that is nearly all zeros.
 I_MIRV        = 6
 I_DEATHS_HEAD = 7
+.item_bundle    EQUB ITEMS[.., 5]  ; (no room for it below &0E00 any more)
 ASSERT ITEMS[I_MIRV][1] = SK_MIRV AND ITEMS[I_DEATHS_HEAD][1] = SK_MIRV
 FOR i = 0..NITEMS-1
     ASSERT ITEMS[i][6] = 0 OR i = I_MIRV OR i = I_DEATHS_HEAD
@@ -301,6 +309,8 @@ SPREAD = 2200
     CMP #SK_FUNKY : BEQ funky
     CMP #SK_BOMBLET : BEQ bomblet
     CMP #SK_LEAP : BEQ leap
+    CMP #SK_NAPALM : BNE @+ : JMP napalm : .@
+    CMP #SK_LIQUID : BNE @+ : JMP liquid_dirt : .@
     JMP explosion
 .none
     RTS

@@ -18,7 +18,6 @@ SECTION LowUdg, org = tables_end, guard = &0D00
 .item_kind      EQUB ITEMS[.., 1]
 .item_radius    EQUB ITEMS[.., 2]
 .item_power     EQUB ITEMS[.., 3]
-.item_bundle    EQUB ITEMS[.., 5]
 .low_udg_end
 ENDSECTION
 

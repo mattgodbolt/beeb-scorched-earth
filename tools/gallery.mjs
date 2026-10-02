@@ -2,7 +2,7 @@
 // screenshot each mid-effect to shots/gal_<name>.png.
 import { startBeeb } from "./beeb.mjs";
 // weapon index, frames to wait after firing, label
-const tests = [[4, 120, "leapfrog"], [5, 110, "funky"], [7, 75, "deathshead"], [10, 110, "roller"], [16, 100, "tonofdirt"], [8, 90, "tracer"]];
+const tests = [[17, 95, "napalm"], [18, 110, "hotnapalm"], [19, 110, "liquiddirt"], [4, 120, "leapfrog"], [5, 110, "funky"], [7, 75, "deathshead"], [10, 110, "roller"], [16, 100, "tonofdirt"], [8, 90, "tracer"]];
 const b = await startBeeb({ disc: "build/scorch.ssd", bootSecs: 5 });
 await b.tap("DOWN"); await b.run(0.2); await b.tap("DOWN"); await b.run(0.2); await b.tap("DOWN"); await b.run(0.2);
 for (let i = 0; i < 4; i++) { await b.tap("LEFT"); await b.run(0.2); }   // player 2 -> human too
