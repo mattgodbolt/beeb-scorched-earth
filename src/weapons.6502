@@ -116,15 +116,16 @@ NEXT
 \ run out).
 .next_weapon
 {
-    ZA_AUTO1 w
-    LDX cur : LDA tank_weapon,X : STA w
+    LDX cur : LDY tank_weapon,X                 ; (inv_index preserves Y)
 .try
-    \ (w is never 0 after the INC, so Z is only set by wrapping round.)
-    INC w : LDA w : CMP #NWEAPONS : BCC @+ : LDA #0 : STA w : .@
-    BEQ found
+    INY : TYA
+    CPY #NWEAPONS : BCS wrap
     JSR inv_index : LDA inv,X : BEQ try
-.found
-    LDX cur : LDA w : STA tank_weapon,X
+    TYA
+    BITABS                                      ; (skip the LDA #0)
+.wrap
+    LDA #0
+    LDX cur : STA tank_weapon,X
     RTS
 }
 
@@ -132,9 +133,9 @@ NEXT
 \ Missiles when they run out.
 .use_weapon
 {
-    LDX cur : LDA tank_weapon,X : BEQ done
+    LDY cur : LDA tank_weapon,Y : BEQ done      ; (inv_index preserves Y)
     JSR inv_index : DEC inv,X : BNE done
-    LDX cur : LDA #0 : STA tank_weapon,X
+    LDA #0 : STA tank_weapon,Y
 .done
     RTS
 }
@@ -152,24 +153,29 @@ ZA_AUTO1 shell_i            ; the shell being worked on
 .load_shell
 {
     STX shell_i
-    TXA : ASL A : ASL A : ASL A : ASL A : TAX
-    LDY #0
+    JSR shell_offset
 .copy
-    LDA shells,X : STA shell,Y : ZA_INDEXEDBY 0..15
-    INX : INY : CPY #16 : BNE copy
+    LDA shells,Y : STA shell,X : ZA_INDEXEDBY 0..15
+    INY : INX : CPX #16 : BNE copy
     RTS
 }
 
 \ Copy the zero page block back into shell shell_i.
 .save_shell
 {
-    LDA shell_i : ASL A : ASL A : ASL A : ASL A : TAX
-    LDY #0
+    JSR shell_offset
 .copy
-    LDA shell,Y : ZA_INDEXEDBY 0..15 : STA shells,X
-    INX : INY : CPY #16 : BNE copy
+    LDA shell,X : ZA_INDEXEDBY 0..15 : STA shells,Y
+    INY : INX : CPX #16 : BNE copy
     RTS
 }
+
+\ Y = shell_i's offset in shells, X = 0. (X indexes the zero page block:
+\ zp,X is a byte shorter than abs,Y.)
+.shell_offset
+    LDA shell_i : ASL A : ASL A : ASL A : ASL A : TAY
+    LDX #0
+    RTS
 
 \ Put the zero page shell into a free slot, if there is one.
 .spawn_shell
@@ -237,24 +243,23 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     LDA shells+2,Y : CMP #SCREEN_W : BCS next
     LDA shells+6,Y : CMP #TOP : BCC next
     LDX i : STA sh_oldy,X : PHA
-    LDA #1 : STA sh_drawn,X
+    STA sh_drawn,X                              ; (the row: never 0)
     LDA shells+2,Y : STA sh_oldx,X
     TAX : PLA : TAY
     LDA shot_colour : JSR plot
 .next
     INC i : LDA i : CMP #MAXSH : BNE loop
+.done
     RTS
 }
 
 \ Take shell X's dot off the screen, if it is on it.
 .undraw_shell
 {
-    LDA sh_drawn,X : BEQ done
+    LDA sh_drawn,X : BEQ draw_shells.done
     LDA #0 : STA sh_drawn,X
     LDY sh_oldy,X : LDA sh_oldx,X : TAX
     JMP unplot
-.done
-    RTS
 }
 
 \ The MIRV in the zero page block becomes the split count (ITEMS) of
@@ -262,26 +267,27 @@ ZA_AUTO1 shell_i            ; the shell being worked on
 .split
 {
     ZA_AUTO1 n, k
-    LDA #ITEMS[I_MIRV][6]
+    \ Both counts are odd and at least 3, so the loops below needn't test
+    \ for zero up front.
+    ASSERT ITEMS[I_MIRV][6] >= 3 AND (ITEMS[I_MIRV][6] AND 1) = 1
+    ASSERT ITEMS[I_DEATHS_HEAD][6] >= 3 AND (ITEMS[I_DEATHS_HEAD][6] AND 1) = 1
+    \ n = the warheads still to spawn after this one
+    LDA #ITEMS[I_MIRV][6]-1
     LDX weapon : CPX #I_DEATHS_HEAD : BNE @+
-    LDA #ITEMS[I_DEATHS_HEAD][6]
+    LDA #ITEMS[I_DEATHS_HEAD][6]-1
 .@  STA n
+    \ start the fan at vx - (n/2) * spread
+    LSR A : STA k
     LDA #SK_MISSILE : STA shot_kind
-    \ start the fan at vx - (n-1)/2 * spread
-    LDA n : SEC : SBC #1 : LSR A : STA k
 .back
-    LDA k : BEQ go
     LDA #LO(-SPREAD) : LDX #HI(-SPREAD) : JSR add_vx
-    DEC k : JMP back
-.go
+    DEC k : BNE back
     \ the first warhead replaces the MIRV itself
     JSR save_shell
 .more
-    DEC n : BEQ done
     LDA #LO(SPREAD) : LDX #HI(SPREAD) : JSR add_vx
     JSR spawn_shell
-    JMP more
-.done
+    DEC n : BNE more
     RTS
 SPREAD = 2200
 }
@@ -309,28 +315,27 @@ SPREAD = 2200
     LDX weapon
     LDA item_radius,X : STA expl_r
     LDA item_power,X : STA blast_power
-    LDA shot_kind : AND #15
-    CMP #SK_TRACER : BEQ none
-    CMP #SK_DIRT : BEQ dirt_ball
-    CMP #SK_ROLLER : BEQ roller
-    CMP #SK_FUNKY : BEQ funky
-    CMP #SK_BOMBLET : BEQ bomblet
-    CMP #SK_LEAP : BEQ leap
-    CMP #SK_NAPALM : BNE @+ : JMP napalm : .@
-    CMP #SK_LIQUID : BNE @+ : JMP liquid_dirt : .@
-    JMP explosion
+    LDA shot_kind : AND #15 : TAX
+    LDA land_hi,X : PHA : LDA land_lo,X : PHA
+    RTS                                         ; not a return: a jump
+    ZA_CANJUMP landings
+\ What each SK_ kind does, in order. (Riot Charges never fly.)
+landings = {explosion, none, roller, dirt_ball, explosion, funky, bomblet, leap, explosion, napalm, liquid_dirt}
+ASSERT LEN(landings) = SK_LIQUID + 1 AND SK_CHARGE > SK_LIQUID
+.land_lo
+    EQUB LO(landings - 1)
+.land_hi
+    EQUB HI(landings - 1)
 .none
     RTS
-.roller
-    LDA hit_kind : CMP #HIT_TANK : BEQ @+ : JSR roll : .@
-    JMP explosion
 .bomblet
     LDA #7 : STA expl_r
     LDA #50 : STA blast_power
+    BNE boom                                    ; (always)
+.roller
+    LDA hit_kind : CMP #HIT_TANK : BEQ boom : JSR roll
+.boom
     JMP explosion
-.funky
-    JSR explosion
-    JMP scatter
 .leap
     JSR explosion
     LDA shot_kind : AND #3*HOP : BEQ none
@@ -342,6 +347,9 @@ SPREAD = 2200
     LDA hit_y : SEC : SBC #3 : STA shot_y+2
     LDA #0 : STA shot_y+3
     JMP spawn_shell
+.funky
+    JSR explosion
+    \ fall through
 }
 
 \ A Funky Bomb throws six bomblets up and out from where it burst.
@@ -359,7 +367,7 @@ SPREAD = 2200
     JSR rand : CMP #&80 : ROR A : STA shot_vx+1 ; /2, keeping sign
     BPL @+ : DEX : .@
     STX shot_vx+2
-    JSR rand : AND #&7F : ORA #&40 : EOR #&FF : STA shot_vy+1
+    JSR rand : AND #&3F : EOR #&BF : STA shot_vy+1  ; NOT (&40 + 0..&3F)
     LDA #&FF : STA shot_vy+2
     JSR spawn_shell
     DEC n : BNE more
@@ -385,10 +393,11 @@ SPREAD = 2200
     STX x
     LDY ground,X : DEY : STY hit_y
     STX shot_x+2 : STY shot_y+2
+    \ (tank_at, plot and wait_vsync all leave Y alone; the last two X too)
     JSR tank_at : BCS stop
-    LDX x : LDY hit_y : LDA shot_colour : JSR plot
+    LDX x : LDA shot_colour : JSR plot
     JSR wait_vsync
-    LDX x : LDY hit_y : JSR unplot
+    JSR unplot
     JMP step
 .stop
     LDX x : STX disc_cx
