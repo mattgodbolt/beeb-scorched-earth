@@ -17,6 +17,7 @@ SK_LEAP    = 7              ; explode and hop on
 SK_MIRV    = 8              ; split at the top of the arc
 SK_NAPALM  = 9              ; pour fire (napalm.6502)
 SK_LIQUID  = 10             ; pour dirt (napalm.6502)
+SK_CHARGE  = 11             ; no shell: clear the dirt round your own turret
 SK_ITEM    = 15             ; not a weapon at all
 UNARMED    = &80
 HOP        = &10
@@ -46,21 +47,27 @@ ITEMS = {
     {"NAPALM",          SK_NAPALM,  70,   2, 10000, 10, 0},
     {"HOT NAPALM",      SK_NAPALM, 120,   3, 20000,  2, 0},
     {"LIQUID DIRT",     SK_LIQUID, 100,   0,  5000, 10, 0},
+    {"RIOT CHARGE",     SK_CHARGE,  12,   0,  2000, 10, 0},
+    {"RIOT BLAST",      SK_CHARGE,  20,   0,  5000,  5, 0},
     {"PARACHUTE",       SK_ITEM,     0,   0, 10000,  8, 0},
     {"BATTERY",         SK_ITEM,     0,   0,  5000, 10, 0},
-    {"SHIELD",          SK_ITEM,     0,   0, 20000,  3, 0}
+    {"SHIELD",          SK_ITEM,    60,   0, 20000,  3, 0},
+    {"FORCE SHIELD",    SK_ITEM,   100,   0, 25000,  3, 0},
+    {"HEAVY SHIELD",    SK_ITEM,   150,   0, 30000,  2, 0}
 }
 NITEMS     = LEN(ITEMS)
-NWEAPONS   = NITEMS - 3
+NWEAPONS   = NITEMS - 5
 I_PARACHUTE = NWEAPONS
 I_BATTERY   = NWEAPONS + 1
-I_SHIELD    = NWEAPONS + 2
-SHIELD_STRENGTH = 60
+I_SHIELD    = NWEAPONS + 2  ; then FORCE SHIELD and HEAVY SHIELD: a
+I_HEAVY     = NWEAPONS + 4  ; shield's strength is its "radius"
 \ Only these two split, so `split` picks between them rather than keep a
 \ table of split counts that is nearly all zeros.
 I_MIRV        = 6
 I_DEATHS_HEAD = 7
-.item_bundle    EQUB ITEMS[.., 5]  ; (no room for it below &0E00 any more)
+.item_bundle    EQUB ITEMS[.., 5]  ; (no room for these below &0E00 any more)
+\ Inventory: inv[inv_base[player] + item].
+.inv_base       EQUB (0..MAXP-1) * NITEMS
 ASSERT ITEMS[I_MIRV][1] = SK_MIRV AND ITEMS[I_DEATHS_HEAD][1] = SK_MIRV
 FOR i = 0..NITEMS-1
     ASSERT ITEMS[i][6] = 0 OR i = I_MIRV OR i = I_DEATHS_HEAD

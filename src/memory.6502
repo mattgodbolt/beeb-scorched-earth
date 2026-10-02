@@ -6,7 +6,9 @@
 \ ***************************************************************************
 
 \ The bottom of the stack page. The stack itself never gets near it.
-SECTION StackLow, org = &0100, guard = &01A0   ; (the stack never got below &01D1)
+\ A whole game's deepest stack was &01D1 (measured), so this guard leaves
+\ a 40-byte margin below it. Don't push it further without measuring again.
+SECTION StackLow, org = &0100, guard = &01A8
 .inv            SKIP MAXP * NITEMS      ; inventory: inv[inv_base[p] + item]
 ENDSECTION
 

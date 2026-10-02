@@ -88,9 +88,10 @@ sizes are the original's. Items you can't afford are shown in red.
 | Dirt Clod, Dirt Ball, Ton of Dirt | bury people |
 | Napalm, Hot Napalm | pour burning liquid that runs downhill and pools; anyone standing in it burns |
 | Liquid Dirt | pours like napalm, but sets as ground: fills craters, buries tanks |
+| Riot Charge, Riot Blast | no shell: blow the dirt away from round your own turret, to dig out |
 | Parachute | opens by itself when you fall far enough to hurt |
 | Battery | +10 health (press B) |
-| Shield | soaks up 60 points of damage (press S) |
+| Shield, Force Shield, Heavy Shield | soak up 60, 100 or 150 points of damage (S raises your strongest) |
 
 ![The shop](docs/img/shop.png)
 

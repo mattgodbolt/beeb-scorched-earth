@@ -254,3 +254,18 @@ side is lower.
   because computers spend what they think they have.
 - The regression baseline was regenerated: the inventory it hashes is now
   23 items a player, read using the size from the symbols.
+
+## Riot charges and stronger shields
+
+- Riot Charge and Riot Blast fire no shell: a zero-power blast centred
+  half a radius above the turret, so it digs you out from under dirt
+  without dropping you far. They matter now that Ton of Dirt and Liquid
+  Dirt bury tanks.
+- Force Shield (100) and Heavy Shield (150) reuse the item table's
+  "radius" column as strength; S raises the strongest you own.
+- 27 items is a 162-byte inventory. The stack page section's guard moved
+  to &01A8: a whole game was measured never to push the stack below
+  &01D1, so that's a 40-byte margin. The shop list now starts on line 2
+  so all 26 items fit; `ASSERT NITEMS <= 29` guards it.
+- `tools/shop.mjs` is now deterministic: on the human's turn it takes the
+  computer's tank off the board and fires, which ends the round.

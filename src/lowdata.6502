@@ -25,7 +25,5 @@ ENDSECTION
 SECTION LowNmi, org = nmi_end, guard = &0DF0
 .item_price_lo  EQUB LO(ITEMS[.., 4])
 .item_price_hi  EQUB HI(ITEMS[.., 4])
-\ Inventory: inv[inv_base[player] + item].
-.inv_base       EQUB (0..MAXP-1) * NITEMS
 .low_nmi_end
 ENDSECTION

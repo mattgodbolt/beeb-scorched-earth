@@ -301,14 +301,21 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     JMP frame
 }
 
-\ Tank `cur` raises a shield, if it has one and none is up already: carry
-\ set if it did.
+\ Tank `cur` raises its strongest shield, if it has one and none is up
+\ already: carry set if it did.
 .raise_shield
 {
-    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ no
+    ZA_AUTO1 item
     LDY cur : LDA tank_shield,Y : BNE no
+    \ the strongest one it owns
+    LDA #I_HEAVY : STA item
+.try
+    LDA item : JSR inv_index : LDA inv,X : BNE got
+    DEC item : LDA item : CMP #I_SHIELD : BCS try
+    BCC no
+.got
     DEC inv,X
-    LDA #SHIELD_STRENGTH : STA tank_shield,Y
+    LDX item : LDA item_radius,X : LDY cur : STA tank_shield,Y
     JSR draw_tank
     SEC
     RTS
@@ -361,6 +368,21 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     STA shot_trail
     LDX cur : LDA tank_colour,X : TAX : LDA cbytes,X : STA shot_colour
 .@
+    \ A riot charge has no shell: the blast is round your own turret,
+    \ centred high enough that it barely digs under you.
+    LDX weapon : LDA item_kind,X : CMP #SK_CHARGE : BNE shell
+    LDA item_radius,X : STA expl_r
+    LDA #0 : STA blast_power
+    LDX cur : LDA tank_x,X : STA disc_cx
+    LDA expl_r : LSR A : ADC #TANK_H : STA disc_cy   ; (r/2 + TANK_H above...)
+    LDA tank_y,X : SEC : SBC disc_cy                 ; (...the tank's bottom)
+    BCC @+ : CMP #TOP : BCS ok : .@
+    LDA #TOP
+.ok
+    STA disc_cy
+    JSR explosion
+    JMP kill_dead
+.shell
     LDX #MAXSH-1 : LDA #0
 .clear
     STA sh_active,X : DEX : BPL clear

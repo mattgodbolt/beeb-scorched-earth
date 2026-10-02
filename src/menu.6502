@@ -364,18 +364,19 @@ TITLE = "SCORCHED EARTH"
     JSR cls
     LDA #1 : STA menu_sel
     LDX cur : LDA tank_colour,X : JSR ink
-    LDA #1 : LDX #1 : JSR at
+    \ (26 items: the list starts on line 2 to fit them all)
+    LDA #1 : LDX #0 : JSR at
     LDX cur : JSR print_name
     PRINT6 " GOES SHOPPING"
-    PRINT_AT C_CYAN, 1, 3, "ITEM             QTY  PRICE OWNED"
-    PRINT_AT C_CYAN, 5, 28, "RETURN BUYS   SPACE TO FIGHT"
+    PRINT_AT C_CYAN, 1, 1, "ITEM             QTY  PRICE OWNED"
+    PRINT_AT C_CYAN, 5, 30, "RETURN BUYS   SPACE TO FIGHT"
 .redraw
     LDA #1 : STA i
 .all
     LDA i : JSR shop_line
     INC i : LDA i : CMP #NITEMS : BNE all
     JSR white
-    LDA #31 : LDX #1 : JSR at
+    LDA #31 : LDX #0 : JSR at
     LDX cur : JSR print_money
 .key
     JSR get_key
@@ -412,7 +413,8 @@ TITLE = "SCORCHED EARTH"
     LDX #C_RED
 .colour
     TXA : JSR ink
-    LDA item : CLC : ADC #4 : TAX : LDA #1 : JSR at
+    LDA item : CLC : ADC #1 : TAX : LDA #1 : JSR at
+    ASSERT NITEMS <= 29                         ; (or the shop runs off the screen)
     LDA item : JSR print_item_name
     LDA #4*18 : JSR pad_to
     \ (the wide fields leave the spaces between the columns)

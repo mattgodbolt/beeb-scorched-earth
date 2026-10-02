@@ -39,9 +39,10 @@ and open questions so far:
 - **Shields** absorb 60 damage then go; no deflection, no shield-on-
   direct-hit rule.
 - **Missing weapons and items**: diggers, sandhogs, lasers, plasma,
-  guidance, fuel/movement, contact triggers, mag deflectors, heavy
-  shields. (Napalm, Hot Napalm and Liquid Dirt went in after the memory
-  team freed space.)
+  guidance, fuel/movement, contact triggers, mag deflectors, Super
+  Mag. (Napalm, Hot Napalm, Liquid Dirt, Riot Charge, Riot Blast, Force
+  and Heavy Shields went in after the memory team freed space. Our
+  shields only soak damage; the original's Force Shield also deflects.)
 - **Napalm strength**: 70 units x 2 damage (Hot: 120 x 3). Firing it into
   your own valley kills you, as it should; tune once played.
 
