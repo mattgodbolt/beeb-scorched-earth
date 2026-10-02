@@ -11,7 +11,14 @@ jsbeeb through its MCP server. `DESIGN.md` is what the game is meant to be,
 make            # assemble build/scorch.ssd (+ build/symbols.json, build/listing.txt)
 make run        # boot it, screenshot to shots/run.png
 make test       # four computer players fight a 3-round game; fails on any BRK
+make ship       # rebuild from a clean tree and copy to scorched-earth.ssd
+node tools/regress.mjs build/regress.txt && diff tools/regress.baseline.txt build/regress.txt
 ```
+
+`tools/regress.mjs` is the check for any change meant to preserve
+behaviour (refactors, size savings): 59 deterministic shots, each hashed.
+If behaviour changes on purpose, regenerate the baseline and say so in the
+commit.
 
 Baron is expected at `../baron/build/src/baron` (clone with submodules, build
 with CMake + Ninja), or on the PATH; override with `make BARON=...`.
@@ -45,6 +52,14 @@ Never assume a change worked: `make`, run it, look.
   the same landscape every time. Vary the boot wait to get a different one.
 
 ## Memory
+
+- `boot.6502` is run-once start-up code: it is carried in the file,
+  copied to `skyrow`/`dirtrow` and run there, then overwritten. Nothing in
+  it may be called after the first round starts.
+- `lowdata.6502` holds constant tables that live in RAM holes below
+  &0E00 (copied there by `boot`); `memory.6502` holds everything mutable.
+- On-screen text is `PACKED "..."` (6 bits a character, ASCII 32-94
+  only); `print_at`/`PRINT_AT` take colour and position inline.
 
 - `src/memory.6502` lays out every table and per-player array in guarded
   sections. **Never hand-place an address**: two overlaps happened before

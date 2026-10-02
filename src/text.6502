@@ -69,19 +69,7 @@ ZA_AUTO1 text_x, text_y     ; pixel position of the next character (x even)
     RTS
 }
 
-\ Print the zero-terminated string that follows the JSR.
 ZA_AUTO2 str_ptr
-.print_inline
-{
-    PLA : STA str_ptr : PLA : STA str_ptr+1
-    LDY #1                                      ; the JSR pushed its last byte
-    JSR print_from
-    \ Return to the terminator's address, + 1 by the RTS.
-    TYA : CLC : ADC str_ptr : TAX
-    LDA str_ptr+1 : ADC #0 : PHA
-    TXA : PHA
-    RTS
-}
 
 \ Print the zero-terminated string at (A = lo, X = hi).
 .print_string

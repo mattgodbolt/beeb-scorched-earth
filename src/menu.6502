@@ -114,7 +114,7 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
 .print_packed_nth
     JSR packed_nth : JMP print_packed
 
-\ Print packed text given inline after the JSR, as print_inline does:
+\ Print packed text given inline after the JSR, as print_inline once did:
 \     JSR print6 : PACKED "TEXT"
 \ or put it somewhere in some colour first:
 \     JSR print_at : EQUB colour, x, y : PACKED "TEXT"

@@ -189,3 +189,44 @@ measured things. What changed as a result:
 - The computer swings its turret 2 degrees a frame and pauses less; the
   status bar names its personality; the barrel is 7 rows, not 5, so the
   angle can be judged by eye.
+
+## The memory team: 605 -> 2328 bytes free
+
+Four agents, each in its own git worktree, each owning a disjoint set of
+source files (plus one with a brief to look at the structure rather than
+the code). Disjoint ownership meant the merges were mechanical: three
+small conflicts, all of the "one side moved it, the other improved it"
+kind.
+
+- **Structural (+517).** One-shot start-up code (`boot.6502`) is carried
+  in the file but copied to `skyrow`/`dirtrow` and run from there:
+  `make_colours` overwrites it before the first round. Constant tables
+  (`lowdata.6502`) live in RAM holes below &0E00 that the agent proved idle
+  by filling them with markers and playing a whole game. It also measured
+  the stack (47 bytes deep at most) and zero page (allocator stops at &42),
+  and ruled out screen-memory overlays (no disc after `*TAPE`, nowhere to
+  keep them).
+- **Graphics/text (+286).** `make_profile` keeps the circle test in one
+  signed byte instead of three 16-bit squares; a `pixaddr` helper replaced
+  four copies of the address sum; `unplot` falls into `plot`.
+- **Physics/weapons (+369).** The shell record was reordered so each
+  velocity sits 8 bytes after its position and one indexed loop moves both
+  axes; vector-dispatched disc routines became a `fill_mode` test; the
+  integer square root counts up to `reach` instead of down from a square.
+- **Menus/AI (+558).** Inline "print at" (colour and position as bytes
+  after the JSR), a `times3` table, a key table with RTS dispatch in
+  `aim`, and **6-bit packed text**: a `PACKED "..."` macro packs four
+  characters into three bytes at assembly time, so the source still says
+  what's on screen. (Matt's suggestion was the "5/8ths" trick he and Rich
+  used; 6-bit packing is the same idea using the font's whole 64-glyph
+  alphabet.)
+
+**Verification** is what made this safe. The physics agent wrote
+`tools/regress.mjs`: pin the seed after the setup screen (the boot-time
+seed depends on code size, so every build otherwise plays a different
+game), fire 59 shots from one saved state - every weapon, every wall type,
+near misses at several distances, a shielded tank - and hash the ground,
+health, money, positions, shields and inventory after each. The fully
+merged build matches the pre-team baseline exactly. That file is now
+`tools/regress.baseline.txt`; a deliberate behaviour change means
+regenerating it.
