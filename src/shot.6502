@@ -31,11 +31,13 @@ HIT_APEX   = 3
 \ The shell being flown. weapons.6502 keeps the others in 16-byte records
 \ of exactly this layout.
 ZA_AUTO 16, shell
+\ Each velocity sits 8 bytes after its position, so code indexed by 0 (x)
+\ or 4 (y) works on either axis.
 shot_x     = shell + 0      ; frac lo, frac hi, int lo, int hi
 shot_y     = shell + 4
 shot_vx    = shell + 8      ; frac lo, frac hi, int (signed)
-shot_vy    = shell + 11
-shot_kind  = shell + 14     ; SK_ kind, hops, UNARMED (weapons.6502)
+shot_kind  = shell + 11     ; SK_ kind, hops, UNARMED (weapons.6502)
+shot_vy    = shell + 12
 ZA_AUTO2 wind_acc           ; added to shot_vx every frame (signed)
 ZA_AUTO1 wall_type
 ZA_AUTO1 shot_colour        ; colour byte of the shell, 0 = invisible
@@ -46,33 +48,23 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
 \ Set up a shell leaving the turret of tank `cur` at its angle and power.
 .launch
 {
-    ZA_AUTO2 speed
     LDX cur : STX shot_owner
-    \ speed = power * POWER_MUL (fits in 16 bits for power <= 1500)
+    \ speed = power * POWER_MUL (fits in 16 bits for power <= 1500). It
+    \ stays in mul16.m for both components: mul16 leaves m alone.
     LDA tank_power_lo,X : STA mul16.m
     LDA tank_power_hi,X : STA mul16.m+1
     LDA #POWER_MUL : JSR mul16
-    LDA mul16.r : STA speed
-    LDA mul16.r+1 : STA speed+1
+    LDA mul16.r : STA mul16.m
+    LDA mul16.r+1 : STA mul16.m+1
     LDX cur : LDA tank_angle,X : JSR angle_vec
     \ vy = -(speed * sin) / 256
-    LDA speed : STA mul16.m : LDA speed+1 : STA mul16.m+1
     LDA vec_up : JSR mul16
-    LDA #0 : SEC : SBC mul16.r+1 : STA shot_vy
-    LDA #0 : SBC mul16.r+2 : STA shot_vy+1
-    LDA #0 : SBC #0 : STA shot_vy+2
+    LDX #4 : SEC : JSR set_vel
     \ vx = +-(speed * cos) / 512: pixels are twice as wide as rows are tall
-    LDA speed : STA mul16.m : LDA speed+1 : STA mul16.m+1
     LDA vec_side : JSR mul16
     LSR mul16.r+2 : ROR mul16.r+1
-    LDA mul16.r+1 : STA shot_vx
-    LDA mul16.r+2 : STA shot_vx+1
-    LDA #0 : STA shot_vx+2
-    BIT vec_left : BPL right
-    LDA #0 : SEC : SBC shot_vx : STA shot_vx
-    LDA #0 : SBC shot_vx+1 : STA shot_vx+1
-    LDA #0 : SBC #0 : STA shot_vx+2
-.right
+    LDA vec_left : ASL A                        ; carry set: pointing left
+    LDX #0 : JSR set_vel
     \ Start in the middle of the turret's pivot pixel.
     LDX cur
     LDA #0 : STA shot_x : STA shot_y : STA shot_x+3 : STA shot_y+3
@@ -82,6 +74,32 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDX weapon : LDA item_kind,X : ORA #UNARMED : STA shot_kind
     RTS
 }
+
+\ Velocity X (0 = vx, 4 = vy) = mul16.r / 256, negated if carry is set.
+.set_vel
+    LDA mul16.r+1 : STA shot_vx,X : ZA_INDEXEDBY {0, 4}
+    LDA mul16.r+2 : STA shot_vx+1,X : ZA_INDEXEDBY {0, 4}
+    LDA #0 : STA shot_vx+2,X : ZA_INDEXEDBY {0, 4}
+    BCC vel_done
+\ Negate velocity X (0 = vx, 4 = vy). Returns its top byte in A.
+.negate_vel
+    SEC
+    LDA #0 : SBC shot_vx,X : ZA_INDEXEDBY {0, 4}
+    STA shot_vx,X : ZA_INDEXEDBY {0, 4}
+    LDA #0 : SBC shot_vx+1,X : ZA_INDEXEDBY {0, 4}
+    STA shot_vx+1,X : ZA_INDEXEDBY {0, 4}
+    LDA #0 : SBC shot_vx+2,X : ZA_INDEXEDBY {0, 4}
+    STA shot_vx+2,X : ZA_INDEXEDBY {0, 4}
+.vel_done
+    RTS
+
+\ shot_vx += X:A, a signed 16-bit amount.
+.add_vx
+    LDY #0 : CPX #&80 : BCC @+ : DEY : .@       ; Y = its sign
+    CLC : ADC shot_vx : STA shot_vx
+    TXA : ADC shot_vx+1 : STA shot_vx+1
+    TYA : ADC shot_vx+2 : STA shot_vx+2
+    RTS
 
 \ 16x8 multiply: mul16.m * A -> mul16.r (24 bits).
 .mul16
@@ -111,20 +129,28 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDA #SUBSTEPS : STA sub
 .substep
     \ vy += gravity
-    LDA shot_vy : CLC : ADC #LO(GRAVITY) : STA shot_vy
-    LDA shot_vy+1 : ADC #HI(GRAVITY) : STA shot_vy+1
-    LDA shot_vy+2 : ADC #0 : STA shot_vy+2
-    \ x += vx, y += vy (sign-extending the velocity's integer byte)
-    LDA shot_x : CLC : ADC shot_vx : STA shot_x
-    LDA shot_x+1 : ADC shot_vx+1 : STA shot_x+1
-    LDY #0 : LDA shot_vx+2 : BPL @+ : DEY : .@
-    ADC shot_x+2 : STA shot_x+2
-    TYA : ADC shot_x+3 : STA shot_x+3
-    LDA shot_y : CLC : ADC shot_vy : STA shot_y
-    LDA shot_y+1 : ADC shot_vy+1 : STA shot_y+1
-    LDY #0 : LDA shot_vy+2 : BPL @+ : DEY : .@
-    ADC shot_y+2 : STA shot_y+2
-    TYA : ADC shot_y+3 : STA shot_y+3
+    ASSERT GRAVITY < 256
+    LDA shot_vy : CLC : ADC #GRAVITY : STA shot_vy
+    BCC fallen : INC shot_vy+1 : BNE fallen : INC shot_vy+2
+.fallen
+    \ y += vy, then x += vx (sign-extending the velocity's integer byte)
+    LDX #4
+.axis
+    LDY #0 : LDA shot_vx+2,X : ZA_INDEXEDBY {0, 4}
+    BPL @+ : DEY : .@
+    CLC
+    LDA shot_x,X : ZA_INDEXEDBY {0, 4}
+    ADC shot_vx,X : ZA_INDEXEDBY {0, 4}
+    STA shot_x,X : ZA_INDEXEDBY {0, 4}
+    LDA shot_x+1,X : ZA_INDEXEDBY {0, 4}
+    ADC shot_vx+1,X : ZA_INDEXEDBY {0, 4}
+    STA shot_x+1,X : ZA_INDEXEDBY {0, 4}
+    LDA shot_x+2,X : ZA_INDEXEDBY {0, 4}
+    ADC shot_vx+2,X : ZA_INDEXEDBY {0, 4}
+    STA shot_x+2,X : ZA_INDEXEDBY {0, 4}
+    TYA : ADC shot_x+3,X : ZA_INDEXEDBY {0, 4}
+    STA shot_x+3,X : ZA_INDEXEDBY {0, 4}
+    DEX : DEX : DEX : DEX : BPL axis
     JSR walls : BCS event
     \ Off the side (only possible with no walls): nothing to hit.
     LDA shot_x+3 : BNE next
@@ -135,21 +161,17 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDA shot_y+2 : CMP #FLOOR : BCS bottom
     CMP #TOP : BCC next
     \ The ground?
-    LDX shot_x+2 : CMP ground,X : BCC tanks
-    LDX #HIT_GROUND : BEQ event
-.bottom
-    LDA #FLOOR-1 : STA shot_y+2 : LDA #0 : STA shot_y+3
-    LDX #HIT_GROUND : BEQ event
-.tanks
+    LDX shot_x+2 : CMP ground,X : BCS ground_hit
     JSR tank_at : BCC next
     LDX #HIT_TANK : BNE event
+.bottom
+    LDA #FLOOR-1 : STA shot_y+2 : LDA #0 : STA shot_y+3
+.ground_hit
+    LDX #HIT_GROUND : BEQ event
 .next
-    DEC sub : BEQ @+ : JMP substep : .@
+    DEC sub : BNE substep
     \ Wind, once a frame.
-    LDA shot_vx : CLC : ADC wind_acc : STA shot_vx
-    LDA shot_vx+1 : ADC wind_acc+1 : STA shot_vx+1
-    LDY #0 : LDA wind_acc+1 : BPL @+ : DEY : .@
-    TYA : ADC shot_vx+2 : STA shot_vx+2
+    LDA wind_acc : LDX wind_acc+1 : JSR add_vx
     CLC
     RTS
 .event
@@ -206,50 +228,40 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
 \ hit kind) if the flight ends here.
 .walls
 {
-    LDA shot_x+3 : BMI left
+    LDY #0                                      ; the edge it crossed: left
+    LDA shot_x+3 : BMI crossed
     BNE right
-    LDA shot_x+2 : CMP #SCREEN_W : BCS right
-    CLC
-    RTS
-.left
-    LDA wall_type : BEQ open_left
-    CMP #WALL_WRAP : BEQ wrap_left
-    CMP #WALL_RUBBER : BEQ bounce_left
-    LDA #0 : STA shot_x+2 : STA shot_x+3
-    JMP concrete
-.wrap_left
-    LDA shot_x+2 : CLC : ADC #SCREEN_W : STA shot_x+2
-    LDA #0 : STA shot_x+3
-    CLC : RTS
-.bounce_left
-    LDA #0 : STA shot_x+2 : STA shot_x+3
-    JMP bounce
-.open_left
-    \ Lost once it is OFFSCREEN pixels out (x < -OFFSCREEN).
-    LDA shot_x+2 : CMP #256-OFFSCREEN : BCS stay
-.lost
-    LDX #HIT_LOST : SEC : RTS
+    LDA shot_x+2 : CMP #SCREEN_W : BCC stay
 .right
-    LDA wall_type : BEQ open_right
-    CMP #WALL_WRAP : BEQ wrap_right
-    CMP #WALL_RUBBER : BEQ bounce_right
-    LDA #SCREEN_W-1 : STA shot_x+2 : LDA #0 : STA shot_x+3
+    LDY #SCREEN_W-1                             ; or right
+.crossed
+    LDA wall_type : BEQ open
+    CMP #WALL_WRAP : BEQ wrap
+    \ Rubber and concrete both put it back on the edge column.
+    STY shot_x+2 : LDX #0 : STX shot_x+3
+    CMP #WALL_RUBBER : BNE concrete
+    JSR negate_vel                              ; bounce (X = 0: vx)
+    CLC : RTS
 .concrete
     \ Bursts on the wall - unless it went over the top of the screen.
     LDA shot_y+3 : BNE lost
     LDA shot_y+2 : CMP #TOP : BCC lost
     LDX #HIT_GROUND : SEC : RTS
+.wrap
+    TYA : BNE wrap_right
+    LDA shot_x+2 : CLC : ADC #SCREEN_W : STA shot_x+2
+    LDA #0 : STA shot_x+3
+    CLC : RTS
 .wrap_right
     LDA shot_x+2 : SEC : SBC #SCREEN_W : STA shot_x+2
     LDA shot_x+3 : SBC #0 : STA shot_x+3
     CLC : RTS
-.bounce_right
-    LDA #SCREEN_W-1 : STA shot_x+2 : LDA #0 : STA shot_x+3
-.bounce
-    LDA #0 : SEC : SBC shot_vx : STA shot_vx
-    LDA #0 : SBC shot_vx+1 : STA shot_vx+1
-    LDA #0 : SBC shot_vx+2 : STA shot_vx+2
-    CLC : RTS
+.open
+    \ Lost once it is OFFSCREEN pixels out.
+    TYA : BNE open_right
+    LDA shot_x+2 : CMP #256-OFFSCREEN : BCS stay
+.lost
+    LDX #HIT_LOST : SEC : RTS
 .open_right
     LDA shot_x+3 : BNE lost
     LDA shot_x+2 : CMP #SCREEN_W+OFFSCREEN : BCS lost

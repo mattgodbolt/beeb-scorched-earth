@@ -13,13 +13,13 @@ BARREL_LEN  = 7
 .player_colours
     EQUB C_RED, C_YELLOW, C_MAGENTA, C_CYAN, C_WHITE, C_BLUE
 
-\ The body, top row first, bit 6 = leftmost column.
+\ The body, top row first, bit 7 = leftmost column.
 .tank_shape
-    EQUB %0011100
-    EQUB %0111110
-    EQUB %1111111
-    EQUB %1111111
-    EQUB %0101010
+    EQUB %00111000
+    EQUB %01111100
+    EQUB %11111110
+    EQUB %11111110
+    EQUB %01010100
 
 \ Break an angle (0-180) into upward and sideways magnitudes.
 \ In: A = angle. Out: vec_up = sin, vec_side = |cos|, vec_left = &FF if
@@ -27,19 +27,16 @@ BARREL_LEN  = 7
 ZA_AUTO1 vec_up, vec_side, vec_left
 .angle_vec
 {
-    CMP #91 : BCS left
+    LDX #0
+    CMP #91 : BCC right
+    EOR #&FF : ADC #180                         ; 180 - a (carry was set)
+    DEX
+.right
+    STX vec_left
+    \ A is now 0-90 either way: the left angles are mirrored
     TAX : LDA sintab,X : STA vec_up
     TXA : EOR #&FF : SEC : ADC #90 : TAX        ; 90 - a
     LDA sintab,X : STA vec_side
-    LDA #0 : STA vec_left
-    RTS
-.left
-    TAX
-    EOR #&FF : SEC : ADC #180 : TAX            ; 180 - a
-    LDA sintab,X : STA vec_up
-    TXA : EOR #&FF : SEC : ADC #90 : TAX        ; a - 90 = 90 - (180 - a)
-    LDA sintab,X : STA vec_side
-    LDA #&FF : STA vec_left
     RTS
 }
 
@@ -58,13 +55,14 @@ ZA_AUTO1 cur                ; the player a routine is working on
 SHIELD_R = 8
 .draw_shield
 {
-    ZA_AUTO1 dy, y
+    ZA_AUTO1 dy
     LDA #SHIELD_R : STA disc_r
     JSR make_profile
     LDA #0 : STA dy
 .row
-    LDX cur : LDA tank_y,X : SEC : SBC #2 : SEC : SBC dy : STA y
+    LDX cur : LDA tank_y,X : SEC : SBC #2 : SEC : SBC dy
     CMP #TOP : BCC next
+    TAY                                         ; (plot preserves Y)
     LDX dy : LDA profile,X : STA t
     LDX cur : LDA tank_x,X : SEC : SBC t : JSR dot
     LDX cur : LDA tank_x,X : CLC : ADC t : JSR dot
@@ -73,7 +71,7 @@ SHIELD_R = 8
     RTS
 .dot
     CMP #SCREEN_W : BCS off
-    TAX : LDY y : LDA draw_body.col : JMP plot
+    TAX : LDA draw_body.col : JMP plot
 .off
     RTS
 .t EQUB 0
@@ -82,22 +80,23 @@ SHIELD_R = 8
 \ Draw the body of tank `cur`.
 .draw_body
 {
-    ZA_AUTO1 row, bits, x, y
+    ZA_AUTO1 row, bits
     LDX cur
     LDA tank_colour,X : TAY : LDA cbytes,Y : STA col
-    LDA tank_y,X : SEC : SBC #TANK_H-1 : STA y
+    \ Y = y and X = x throughout: plot preserves both.
+    LDA tank_y,X : SEC : SBC #TANK_H-1 : TAY
     LDA #0 : STA row
 .rowloop
-    LDX row : LDA tank_shape,X : ASL A : STA bits
-    LDX cur : LDA tank_x,X : SEC : SBC #TANK_HALF : STA x
+    LDX row : LDA tank_shape,X : STA bits
+    LDX cur : LDA tank_x,X : SEC : SBC #TANK_HALF : TAX
 .pix
     ASL bits : BCC skip
-    LDX x : CPX #SCREEN_W : BCS skip            ; (clipped at the edges)
-    LDY y : LDA col : JSR plot
+    CPX #SCREEN_W : BCS skip                    ; (clipped at the edges)
+    LDA col : JSR plot
 .skip
-    INC x
+    INX
     LDA bits : BNE pix
-    INC y
+    INY
     INC row : LDA row : CMP #TANK_H : BNE rowloop
     RTS
 .col EQUB 0
@@ -118,9 +117,9 @@ SHIELD_R = 8
     \ ax += cos, ay += sin; the point is (ax / 512, ay / 256) rounded:
     \ sideways distances are halved because pixels are twice as wide.
     LDA ax : CLC : ADC vec_side : STA ax
-    LDA ax+1 : ADC #0 : STA ax+1
+    BCC @+ : INC ax+1 : .@
     LDA ay : CLC : ADC vec_up : STA ay
-    LDA ay+1 : ADC #0 : STA ay+1
+    BCC @+ : INC ay+1 : .@
     LDA ax+1 : CLC : ADC #1 : LSR A             ; dx = (ax + 256) / 512
     BIT vec_left : BPL right
     EOR #&FF : CLC : ADC #1                     ; pointing left: negate
@@ -131,9 +130,10 @@ SHIELD_R = 8
     LDX px : CPX #SCREEN_W : BCS skip
     CPY #TOP : BCC skip
     LDA col : BEQ erase
-    JSR plot : JMP skip
+    JSR plot
+    JMP skip
 .erase
-    JSR unplot
+    JSR unplot                                  ; the background
 .skip
     DEC k : BNE point
     RTS
@@ -151,8 +151,9 @@ SHIELD_R = 8
 .erase_tank
 {
     LDX cur
-    LDA tank_x,X : SEC : SBC #TANK_HALF+3 : STA rect_x0
-    BCS @+ : LDA #0 : STA rect_x0 : .@
+    LDA tank_x,X : SEC : SBC #TANK_HALF+3
+    BCS @+ : LDA #0 : .@
+    STA rect_x0
     LDA tank_x,X : CLC : ADC #TANK_HALF+3 : STA rect_x1
     LDA tank_y,X : SEC : SBC #TANK_H+BARREL_LEN : CMP #TOP : BCS @+ : LDA #TOP : .@
     STA bg_y0
