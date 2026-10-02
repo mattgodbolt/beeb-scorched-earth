@@ -27,6 +27,7 @@ NTYPES  = 6
 .ai_angles  EQUB 70, 50, 45, 65, 80, 30
 
 ZA_AUTO1 ai_target, ai_dist, ai_dir, ai_err
+ZA_AUTO1 tank_angle_was     ; put back before the turret swings round
 ZA_AUTO2 ai_power
 
 \ Choose angle and power for computer player `cur`, then swing the turret
@@ -40,17 +41,13 @@ ZA_AUTO2 ai_power
     JSR draw_status
     LDX cur : LDA tank_type,X : STA type
     \ Raise a shield if it has one, and use batteries when weak.
-    LDA tank_shield,X : BNE shielded
-    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ shielded
-    DEC inv,X
-    LDX cur : LDA #SHIELD_STRENGTH : STA tank_shield,X
-    JSR draw_tank
+    JSR raise_shield
 .shielded
     LDX cur : LDA tank_health,X : CMP #70 : BCS charged
     LDA #I_BATTERY : JSR inv_index : LDA inv,X : BEQ charged
     DEC inv,X
     LDX cur : LDA tank_health,X : ADC #10 : STA tank_health,X   ; (carry clear)
-    JMP shielded
+    BCC shielded                                ; (and still is)
 .charged
     JSR choose_weapon
     JSR pick_target
@@ -59,10 +56,9 @@ ZA_AUTO2 ai_power
 .mangle
     JSR rand : CMP #121 : BCS mangle
     ADC #30 : STA best_angle
-    JSR rand : STA best_power : LDA #0 : STA best_power+1
-    ASL best_power : ROL best_power+1
-    LDA best_power : CLC : ADC #200 : STA best_power
-    LDA best_power+1 : ADC #0 : STA best_power+1
+    LDX #0 : JSR rand : ASL A : BCC @+ : INX : CLC : .@
+    ADC #200 : BCC @+ : INX : .@
+    STA best_power : STX best_power+1
     JMP swing
 .aimed_type
     LDA #255 : STA best_err
@@ -88,23 +84,18 @@ ZA_AUTO2 ai_power
     CPY #4 : BCC halve : LDY #4                 ; (it never gets perfect)
 .halve
     DEY : BMI wobble
-    LSR k : JMP halve
+    LSR k : BPL halve                           ; (always)
 .wobble
     LDA k : BEQ swing
-    JSR rand
+    LDX #0 : JSR rand
 .mod
-    CMP k : BCC @+ : SBC k : JMP mod : .@
+    CMP k : BCC @+ : SBC k : BCS mod : .@       ; (SBC left carry set)
     ASL A : SEC : SBC k                         ; -k .. k
-    BCS up
-    \ down by |A|
+    BCS @+ : DEX : .@                           ; X: its high byte
     CLC : ADC best_power : STA best_power
-    LDA best_power+1 : ADC #&FF : STA best_power+1
+    TXA : ADC best_power+1 : STA best_power+1
     BPL swing
-    LDA #0 : STA best_power : STA best_power+1
-    JMP swing
-.up
-    CLC : ADC best_power : STA best_power
-    LDA best_power+1 : ADC #0 : STA best_power+1
+    LDA #0 : STA best_power : STA best_power+1  ; (not below nothing)
 .swing
     \ Turn the turret a degree a frame, so people can see what is coming.
     LDX cur
@@ -127,7 +118,6 @@ ZA_AUTO2 ai_power
 .there
     LDA #10 : JMP wait_frames
 }
-.tank_angle_was EQUB 0
 
 \ Pick a target: the nearest live enemy, or for a cyborg the weakest.
 \ Sets ai_target, ai_dist (pixels) and ai_dir (0 right, &FF left).
@@ -140,11 +130,8 @@ ZA_AUTO2 ai_power
 .loop
     LDX i : CPX cur : BEQ next
     LDA tank_alive,X : BEQ next
-    LDY cur
-    LDA tank_x,X : SEC : SBC tank_x,Y
-    BCS @+ : EOR #&FF : ADC #1 : .@
-    STA d
-    LDY cur : LDA tank_type,Y : CMP #CYBORG : BNE @+
+    LDY cur : JSR x_dist : STA d
+    LDA tank_type,Y : CMP #CYBORG : BNE @+
     LDA tank_health,X : STA d : .@
     LDA d : CMP best : BCS next
     STA best : STX ai_target
@@ -153,11 +140,16 @@ ZA_AUTO2 ai_power
     \ distance and direction to it
     LDX ai_target : LDY cur
     LDA #0 : STA ai_dir
-    LDA tank_x,X : SEC : SBC tank_x,Y
-    BCS @+ : EOR #&FF : ADC #1 : DEC ai_dir : .@
-    STA ai_dist
+    JSR x_dist : STA ai_dist
+    BCS @+ : DEC ai_dir : .@
     RTS
 }
+
+\ How far tank X is from tank Y -> A, with carry clear if X is to the left.
+.x_dist
+    LDA tank_x,X : SEC : SBC tank_x,Y
+    BCS @+ : EOR #&FF : ADC #1 : .@             ; (which leaves carry clear)
+    RTS
 
 \ Binary-search the power, at the angle tank `cur` has, that lands the
 \ shell nearest the target. Leaves ai_power and ai_err (pixels, 255 max).
@@ -166,10 +158,8 @@ ZA_AUTO2 ai_power
     ZA_AUTO2 lo, hi
     ZA_AUTO1 iter
     LDA #LO(80) : STA lo : LDA #HI(80) : STA lo+1
-    LDX cur
-    LDA tank_health,X : STA mul16.m : LDA #0 : STA mul16.m+1
-    LDA #10 : JSR mul16
-    LDA mul16.r : STA hi : LDA mul16.r+1 : STA hi+1
+    LDX cur : JSR max_power
+    LDA num : STA hi : LDA num+1 : STA hi+1
     LDA #8 : STA iter
 .step
     \ try the middle
@@ -178,7 +168,7 @@ ZA_AUTO2 ai_power
     JSR test_shot
     BCC long
     LDA ai_power : STA lo : LDA ai_power+1 : STA lo+1
-    JMP next
+    BCS next                                    ; (short: carry still set)
 .long
     LDA ai_power : STA hi : LDA ai_power+1 : STA hi+1
 .next
@@ -206,9 +196,7 @@ ZA_AUTO2 ai_power
     LDA walls_were : STA wall_type
     LDA hit_kind : CMP #HIT_TANK : BNE miss
     LDA hit_tank : CMP ai_target : BNE miss
-    LDA #0 : STA ai_err
-    CLC
-    RTS
+    LDA #0 : BEQ long
 .miss
     \ progress = how far the shell got towards the target side
     LDX cur
@@ -220,23 +208,21 @@ ZA_AUTO2 ai_power
 .@
     \ err = |prog - dist|, short if prog < dist
     LDA prog : SEC : SBC ai_dist : STA prog
-    LDA prog+1 : SBC #0 : STA prog+1
+    LDA prog+1 : SBC #0
     BMI short
-    BNE farlong
-    LDA prog : STA ai_err
-    CLC
-    RTS
-.farlong
-    LDA #255 : STA ai_err
+    BEQ near
+    LDA #255 : BNE long                         ; 256 or more past it
+.near
+    LDA prog
+.long
+    STA ai_err
     CLC
     RTS
 .short
-    CMP #&FF : BNE farshort
-    LDA #0 : SEC : SBC prog : STA ai_err
-    SEC
-    RTS
-.farshort
-    LDA #255 : STA ai_err
+    LDX #255
+    CMP #&FF : BNE @+                           ; 256 or more short of it
+    LDA #0 : SEC : SBC prog : TAX
+.@  STX ai_err
     SEC
     RTS
 }
@@ -244,16 +230,16 @@ ZA_AUTO2 ai_power
 \ Choose the biggest gun in the inventory, most of the time.
 .choose_weapon
 {
+    ZA_AUTO1 w
     LDX cur : LDA #0 : STA tank_weapon,X
     JSR rand : AND #3 : BEQ done                ; a quarter of the time: baby
     LDA #NWEAPONS-1 : STA w
 .try
-    LDA w : TAY : LDA item_kind,Y
+    LDY w : LDA item_kind,Y
     CMP #SK_MISSILE : BEQ ok
     CMP #SK_MIRV : BEQ ok
     CMP #SK_ROLLER : BEQ ok
-    CMP #SK_FUNKY : BEQ ok
-    BNE next
+    CMP #SK_FUNKY : BNE next
 .ok
     LDA w : JSR inv_index : LDA inv,X : BEQ next
     LDX cur : LDA w : STA tank_weapon,X
@@ -262,5 +248,4 @@ ZA_AUTO2 ai_power
     DEC w : BNE try
 .done
     RTS
-.w EQUB 0
 }

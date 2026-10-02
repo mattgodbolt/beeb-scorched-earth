@@ -27,7 +27,7 @@ MAX_WIND = 20
     STA tank_money,X : DEX : BPL broke
     LDX #MAXP-1
 .fresh
-    STA tank_score,X : STA tank_weapon,X : STA tank_tries,X
+    STA tank_score,X : STA tank_weapon,X
     DEX : BPL fresh
     STA round_no
 .round
@@ -42,13 +42,12 @@ MAX_WIND = 20
 .turn
     LDX cur : LDA tank_alive,X : BEQ next
     STX attacker
-    LDA tank_type,X : BEQ human
-    JSR ai_turn
-    JMP shoot
-.human
+    LDA tank_type,X : BNE computer
     JSR aim
     BCC shoot
     JMP game
+.computer
+    JSR ai_turn
 .shoot
     JSR fire
     JSR spectators
@@ -118,73 +117,65 @@ MAX_WIND = 20
 \ A fresh landscape, wind and walls, and everyone back at full health.
 .new_round
 {
+    ZA_AUTO1 twice
     JSR rand : AND #63 : ORA #31 : STA terrain_amp
     JSR gen_terrain
     JSR make_colours
-    \ wind: -MAX_WIND..MAX_WIND, signed
     \ wind: the difference of two randoms, so a gale is rarer than a breeze
     JSR rand : AND #15 : STA wind
     JSR rand : AND #15 : EOR #&FF : SEC : ADC wind : STA wind
-    JSR set_wind
+    \ wind_acc = wind * 6 (per-frame velocity change, 1/65536 px/substep).
+    \ |wind| <= 15, so even x6 fits in a signed byte.
+    ASL A : STA twice : ASL A
+    LDX #0 : CLC : ADC twice : BPL @+ : DEX : .@
+    STA wind_acc : STX wind_acc+1
     JSR rand : AND #3 : STA wall_type
     JSR place_tanks
     JSR clear_status
     JSR draw_terrain
-    JSR draw_tanks
-    RTS
-}
-
-\ wind_acc = wind * 6 (per-frame velocity change, 1/65536 px/substep).
-.set_wind
-{
-    LDA wind : STA wind_acc
-    LDA #0 : STA wind_acc+1
-    LDA wind : BPL @+ : LDA #&FF : STA wind_acc+1 : .@
-    \ x6 = x2 + x4
-    ASL wind_acc : ROL wind_acc+1
-    LDA wind_acc : STA t : LDA wind_acc+1 : STA t+1
-    ASL wind_acc : ROL wind_acc+1
-    LDA wind_acc : CLC : ADC t : STA wind_acc
-    LDA wind_acc+1 : ADC t+1 : STA wind_acc+1
-    RTS
-.t EQUW 0
+    JMP draw_tanks
 }
 
 \ Spread the tanks out, flatten a pad under each, full health.
 .place_tanks
 {
-    ZA_AUTO1 slot, width, x
-    \ slot width = 160 / num_players
-    LDA #SCREEN_W : STA div16.n : LDA #0 : STA div16.n+1
-    LDA num_players : JSR div16
-    LDA div16.n : STA width
+    ZA_AUTO1 slot, width, x, t
+    ZA_AUTO MAXP, order
+    LDX num_players : LDA slot_widths-2,X : STA width
     \ Shuffle who gets which slot.
     LDX #MAXP-1
 .ident
-    TXA : STA order,X : DEX : BPL ident
+    TXA : STA order,X : ZA_INDEXEDBY 0..MAXP-1
+    DEX : BPL ident
     LDX num_players : DEX
 .shuffle
     JSR rand : AND #7 : CMP num_players : BCS shuffle
-    TAY : LDA order,X : PHA : LDA order,Y : STA order,X : PLA : STA order,Y
+    TAY
+    LDA order,X : ZA_INDEXEDBY 0..MAXP-1
+    PHA
+    LDA order,Y : ZA_INDEXEDBY 0..MAXP-1
+    STA order,X : ZA_INDEXEDBY 0..MAXP-1
+    PLA
+    STA order,Y : ZA_INDEXEDBY 0..MAXP-1
     DEX : BNE shuffle
     LDA #0 : STA slot
 .tank
     \ x = slot * width + width / 2 + jitter (+-width/4)
     LDA slot : LDX width : JSR umul8
-    LDA width : LSR A : CLC : ADC umul8.lo : STA x
-    \ jitter: x += rand mod (width/2) - width/4
     LDA width : LSR A : STA t
+    CLC : ADC umul8.lo : STA x
+    \ jitter: x += rand mod (width/2) - width/4
     JSR rand
 .mod
-    CMP t : BCC @+ : SBC t : JMP mod : .@
-    CLC : ADC x : STA x
-    LDA t : LSR A : STA t
-    LDA x : SEC : SBC t : STA x
-.nojit
-    LDA x : CMP #TANK_HALF+1 : BCS @+ : LDA #TANK_HALF+1 : STA x : .@
-    LDA x : CMP #SCREEN_W-TANK_HALF-1 : BCC @+ : LDA #SCREEN_W-TANK_HALF-2 : STA x : .@
-    LDY slot : LDX order,Y
-    LDA x : STA tank_x,X
+    CMP t : BCC @+ : SBC t : BCS mod : .@      ; (SBC left carry set)
+    LSR t
+    CLC : ADC x : SEC : SBC t
+    \ kept on the screen
+    CMP #TANK_HALF+1 : BCS @+ : LDA #TANK_HALF+1 : .@
+    CMP #SCREEN_W-TANK_HALF-1 : BCC @+ : LDA #SCREEN_W-TANK_HALF-2 : .@
+    STA x
+    LDY slot : LDX order,Y : ZA_INDEXEDBY 0..MAXP-1
+    STA tank_x,X
     \ flatten the pad and stand on it
     TAY : LDA ground,Y : STA t
     SEC : SBC #1 : STA tank_y,X
@@ -198,15 +189,15 @@ MAX_WIND = 20
     LDY x : CPY #SCREEN_W/2 : BCC @+ : LDA #135 : .@
     STA tank_angle,X
     LDA x : SEC : SBC #TANK_HALF : TAY
-    LDA t
-    FOR i = 0..2*TANK_HALF
-        STA ground+i,Y
-    NEXT
-    INC slot : LDA slot : CMP num_players : BEQ @+ : JMP tank : .@
+    LDA t : LDX #2*TANK_HALF
+.flatten
+    STA ground,Y : INY : DEX : BPL flatten
+    INC slot : LDA slot : CMP num_players : JNE tank
     RTS
-.t EQUB 0
-.order SKIP MAXP
 }
+\ The width of each tank's slot of the screen, by number of players.
+.slot_widths
+    EQUB SCREEN_W DIV (2..MAXP)
 
 \ ---------------------------------------------------------------------------
 \ Aiming. Left/right turn the turret, up/down change power (SHIFT for
@@ -215,25 +206,37 @@ MAX_WIND = 20
 
 .aim
 {
-    ZA_AUTO1 held
+    ZA_AUTO1 held, k
     LDA #0 : STA held
     JSR clamp_power
     JSR draw_status
     JSR draw_tank
 .frame
     JSR wait_vsync
-    LDX #K_LEFT : JSR key_down : JNE left
-    LDX #K_RIGHT : JSR key_down : JNE right
-    LDX #K_UP : JSR key_down : JNE up
-    LDX #K_DOWN : JSR key_down : JNE down
-    LDA #0 : STA held
-    LDX #K_TAB : JSR key_down : BNE tab
-    LDX #K_ESCAPE : JSR key_down : JNE quit
-    LDX #K_B : JSR key_down : BNE battery
-    LDX #K_S : JSR key_down : BNE shield
-    LDX #K_SPACE : JSR key_down : BNE fire
-    LDX #K_RETURN : JSR key_down : BNE fire
-    JMP frame
+    \ The first key in keys (from the end) that is down picks the handler.
+    LDA #NKEYS-1 : STA k
+.scan
+    LDY k
+    CPY #NKEYS-5 : BNE @+
+    LDA #0 : STA held                           ; no arrow key is down
+.@
+    LDX keys,Y : JSR key_down : BNE found
+    DEC k : BPL scan
+    BMI frame
+.found
+    LDY k
+    LDA go_hi,Y : PHA : LDA go_lo,Y : PHA
+    RTS                                         ; not a return: a jump
+    ZA_CANJUMP go
+.keys
+    EQUB K_RETURN, K_SPACE, K_S, K_B, K_ESCAPE, K_TAB
+    EQUB K_DOWN, K_UP, K_RIGHT, K_LEFT
+NKEYS = P% - keys
+go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
+.go_lo
+    EQUB LO(go - 1)
+.go_hi
+    EQUB HI(go - 1)
 .fire
     CLC
     RTS
@@ -259,25 +262,22 @@ MAX_WIND = 20
     JSR draw_status
     JMP release
 .shield
-    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ release
-    LDY cur : LDA tank_shield,Y : BNE release
-    DEC inv,X
-    LDA #SHIELD_STRENGTH : STA tank_shield,Y
+    JSR raise_shield : BCC release
     JSR snd_click
-    JSR draw_tank
     JMP release
 .left
-    LDX cur : LDA tank_angle,X : CMP #180 : BCC @+ : JMP frame : .@
+    LDX cur : LDA tank_angle,X : CMP #180 : BCS again
     JSR erase_barrel
     LDX cur : INC tank_angle,X
     JMP turned
 .right
-    LDX cur : LDA tank_angle,X : JEQ frame
+    LDX cur : LDA tank_angle,X : BEQ again
     JSR erase_barrel
     LDX cur : DEC tank_angle,X
 .turned
     JSR draw_tank
     JSR draw_angle
+.again
     JMP frame
 .up
     JSR power_step
@@ -285,22 +285,40 @@ MAX_WIND = 20
     LDA tank_power_lo,X : CLC : ADC power_step.step : STA tank_power_lo,X
     LDA tank_power_hi,X : ADC #0 : STA tank_power_hi,X
     JSR clamp_power
-    JSR draw_power
-    JMP frame
+    JMP powered
 .down
     JSR power_step
     LDX cur
     LDA tank_power_lo,X : SEC : SBC power_step.step : STA tank_power_lo,X
     LDA tank_power_hi,X : SBC #0 : STA tank_power_hi,X
-    BCS @+ : LDA #0 : STA tank_power_lo,X : STA tank_power_hi,X : .@
+    BCS powered
+    LDA #0 : STA tank_power_lo,X : STA tank_power_hi,X
+.powered
     JSR draw_power
     JMP frame
+}
+
+\ Tank `cur` raises a shield, if it has one and none is up already: carry
+\ set if it did.
+.raise_shield
+{
+    LDA #I_SHIELD : JSR inv_index : LDA inv,X : BEQ no
+    LDY cur : LDA tank_shield,Y : BNE no
+    DEC inv,X
+    LDA #SHIELD_STRENGTH : STA tank_shield,Y
+    JSR draw_tank
+    SEC
+    RTS
+.no
+    CLC
+    RTS
 }
 
 \ How far one frame of holding up/down moves the power: 1 with SHIFT,
 \ else 2, rising to 10 after half a second.
 .power_step
 {
+    ZA_AUTO1 step
     LDA #1 : STA step
     LDX #K_SHIFT : JSR key_down : BNE done
     LDA #2 : STA step
@@ -310,21 +328,17 @@ MAX_WIND = 20
     LDA #10 : STA step
 .done
     RTS
-.step EQUB 0
 }
 
 \ Max power is ten times health.
 .clamp_power
 {
-    ZA_AUTO2 max
+    LDX cur : JSR max_power
     LDX cur
-    LDA tank_health,X : STA mul16.m : LDA #0 : STA mul16.m+1
-    LDA #10 : JSR mul16
-    LDX cur
-    LDA tank_power_lo,X : CMP mul16.r : LDA tank_power_hi,X : SBC mul16.r+1
+    LDA tank_power_lo,X : CMP num : LDA tank_power_hi,X : SBC num+1
     BCC ok
-    LDA mul16.r : STA tank_power_lo,X
-    LDA mul16.r+1 : STA tank_power_hi,X
+    LDA num : STA tank_power_lo,X
+    LDA num+1 : STA tank_power_hi,X
 .ok
     RTS
 }
@@ -357,8 +371,7 @@ MAX_WIND = 20
     JSR spawn_shell
     JSR snd_fire
     JSR fly_shells
-    JSR kill_dead
-    RTS
+    JMP kill_dead
 }
 
 \ Tanks whose health has run out blow up - which may finish off others.
@@ -450,7 +463,7 @@ MAX_WIND = 20
     \ A long fall hurts, unless a parachute opens.
     LDA i : CMP #6 : BCC next
     LDA #I_PARACHUTE : JSR inv_index : LDA inv,X : BEQ splat
-    DEC inv,X : JMP next
+    DEC inv,X : BPL next                        ; (always: 0-98 left)
 .splat
     LDA i : JSR hurt
     JSR draw_tank
@@ -473,56 +486,45 @@ MAX_WIND = 20
 
 .draw_status
 {
-    JSR white
-    LDA #0 : STA text_x : LDA #2 : STA text_y
-    JSR print_inline : EQUS "POWER", 0
+    PRINT_XY C_WHITE, 0, 2, "POWER"
     JSR draw_power
-    LDA #4*12 : STA text_x
-    JSR print_inline : EQUS "ANGLE", 0
+    PRINT_XY C_WHITE, 4*12, 2, "ANGLE"
     JSR draw_angle
     \ name, in the tank's colour
     LDX cur : LDA tank_colour,X : JSR ink
     LDA #4*24 : STA text_x
     LDX cur : JSR print_name
-.namepad
-    LDA #32 : JSR draw_char
-    LDA text_x : CMP #4*34 : BCC namepad
+    LDA #4*34 : JSR pad_to
     \ wind
     LDA #C_CYAN : JSR ink
     LDA wind : BEQ calm : BPL east
-    JSR print_inline : EQUS "<", 0
+    PRINT6 "<"
     LDA wind : EOR #&FF : CLC : ADC #1 : JSR wind_num
     JMP line2
 .east
     JSR wind_num
-    JSR print_inline : EQUS ">", 0
+    PRINT6 ">"
     JMP line2
 .calm
-    JSR print_inline : EQUS "CALM ", 0
+    PRINT6 "CALM "
 .line2
-    JSR white
     JSR draw_weapon
-    JSR white
-    LDA #4*21 : STA text_x
-    JSR print_inline : EQUS "HEALTH", 0
+    PRINT_XY C_WHITE, 4*21, 9, "HEALTH"
     LDX cur : LDA tank_health,X : LDX #4 : JSR print_byte
     \ the walls, in the original's colours
     LDX wall_type : LDA wall_colours,X : JSR ink
     LDA #4*32 : STA text_x
     LDA wall_type
-    LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_nth
+    LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_packed_nth
 .wind_num
     \ wind is shown x10, as the original's 0-200 scale
-    STA mul16.m : LDA #0 : STA mul16.m+1
-    LDA #10 : JSR mul16
-    LDA mul16.r : STA num : LDA mul16.r+1 : STA num+1 : LDA #0 : STA num+2
+    LDX #10 : JSR times
     LDA #3 : JMP print_num
 }
 
 .draw_power
 {
-    JSR white
-    LDA #4*6 : STA text_x : LDA #2 : STA text_y
+    LDA #4*6 : LDY #2 : JSR white_at
     LDX cur
     LDA tank_power_lo,X : STA num
     LDA tank_power_hi,X : STA num+1
@@ -531,23 +533,20 @@ MAX_WIND = 20
 }
 
 .wall_names
-    EQUS "    OPEN", 0, "    WRAP", 0, "  RUBBER", 0, "CONCRETE", 0
+    PACKED "    OPEN" : PACKED "    WRAP" : PACKED "  RUBBER" : PACKED "CONCRETE"
 .wall_colours
     EQUB C_WHITE, C_YELLOW, C_RED, C_WHITE
 
 \ The selected weapon and how many are left.
 .draw_weapon
 {
-    JSR white
-    LDA #0 : STA text_x : LDA #9 : STA text_y
+    LDA #0 : LDY #9 : JSR white_at
     LDX cur : LDA tank_weapon,X : JSR print_item_name
-.pad
-    LDA #32 : JSR draw_char
-    LDA text_x : CMP #4*16 : BCC pad
+    LDA #4*16 : JSR pad_to
     LDX cur : LDA tank_weapon,X : BEQ lots
     JSR inv_index : LDA inv,X : LDX #2 : JMP print_byte
 .lots
-    JSR print_inline : EQUS "--", 0
+    PRINT6 "--"
     RTS
 }
 
@@ -555,14 +554,18 @@ MAX_WIND = 20
 \ arrow for the side it faces.
 .draw_angle
 {
-    JSR white
-    LDA #4*18 : STA text_x : LDA #2 : STA text_y
+    LDA #4*18 : LDY #2 : JSR white_at
     LDX cur : LDA tank_angle,X
-    CMP #91 : BCS left
-    LDX #3 : JSR print_byte
-    LDA #62 : JMP draw_char           ; >
-.left
+    LDY #62                                     ; >
+    CMP #91 : BCC @+
     EOR #&FF : SEC : ADC #180
+    LDY #60                                     ; <
+.@  TAX : TYA : PHA : TXA                       ; the arrow, for after
     LDX #3 : JSR print_byte
-    LDA #60 : JMP draw_char           ; <
+    PLA : JMP draw_char
 }
+
+\ White text from (A, Y) in pixels.
+.white_at
+    STA text_x : STY text_y
+    JMP white
