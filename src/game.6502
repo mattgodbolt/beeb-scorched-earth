@@ -25,13 +25,14 @@ MAX_WIND = 20
 .empty
     DEX : STA inv,X : BNE empty
     ASSERT MAXP*NITEMS <= 256
-    LDX #MAXP*3-1
+    \ No money and no score: one run of memory.
+    ASSERT tank_score = tank_money + MAXP*3
+    LDX #MAXP*4-1
 .broke
     STA tank_money,X : DEX : BPL broke
     LDX #MAXP-1
 .fresh
-    STA tank_score,X : STA tank_weapon,X
-    DEX : BPL fresh
+    STA tank_weapon,X : DEX : BPL fresh
     STA round_no
 .round
     INC round_no
@@ -86,11 +87,8 @@ MAX_WIND = 20
 .stalemate
     LDX #&FF                                    ; nobody won
     LDA #80 : JSR wait_frames                   ; (keeps X)
-.decided
     TXA : PHA : BMI nowin
-    INC tank_score,X
-    LDA #20 : JSR five_hundreds
-    PLA : PHA : TAX : JSR money_add
+    LDA #20 : JSR reward
     JSR snd_fanfare
 .nowin
     PLA : JSR scores
@@ -101,6 +99,15 @@ MAX_WIND = 20
 .over
     JSR champion
     JMP game
+}
+
+\ Player X scores a point and wins A * $500.
+.reward
+{
+    ZA_AUTO1 who
+    INC tank_score,X
+    STX who : JSR five_hundreds
+    LDX who : JMP money_add
 }
 
 \ A fresh landscape, wind and walls, and everyone back at full health.
@@ -163,10 +170,9 @@ MAX_WIND = 20
     \ kept on the screen
     CMP #TANK_HALF+1 : BCS @+ : LDA #TANK_HALF+1 : .@
     CMP #SCREEN_W-TANK_HALF-1 : BCC @+ : LDA #SCREEN_W-TANK_HALF-2 : .@
-    STA x
     LDY slot : LDX order,Y : ZA_INDEXEDBY 0..MAXP-1
     STA tank_x,X
-    \ flatten the pad and stand on it
+    \ flatten the pad and stand on it (Y = tank_x from here on)
     TAY : LDA ground,Y : STA t
     SEC : SBC #1 : STA tank_y,X
     \ aim at the middle of the screen, half power
@@ -176,13 +182,14 @@ MAX_WIND = 20
     LDA #100 : STA tank_health,X
     LDA #0 : STA tank_shield,X : STA tank_tries,X
     LDA #45
-    LDY x : CPY #SCREEN_W/2 : BCC @+ : LDA #135 : .@
+    CPY #SCREEN_W/2 : BCC @+ : LDA #135 : .@
     STA tank_angle,X
-    LDA x : SEC : SBC #TANK_HALF : TAY
+    ASSERT TANK_HALF = 3
+    DEY : DEY : DEY                             ; the pad's left end
     LDA t : LDX #2*TANK_HALF
 .flatten
     STA ground,Y : INY : DEX : BPL flatten
-    INC slot : LDA slot : CMP num_players : JNE tank
+    INC slot : LDA slot : CMP num_players : BNE tank
     RTS
 }
 \ The width of each tank's slot of the screen, by number of players.
@@ -293,21 +300,20 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 \ already: carry set if it did.
 .raise_shield
 {
+    CLC
     LDY cur : LDA tank_shield,Y : BNE no
     \ the strongest one it owns (inv_index keeps Y)
     LDY #I_HEAVY
 .try
     TYA : JSR inv_index : LDA inv,X : BNE got
     DEY : CPY #I_SHIELD : BCS try
+.no
     RTS                                         ; (carry clear)
 .got
     DEC inv,X
     LDA item_radius,Y : LDY cur : STA tank_shield,Y
     JSR draw_tank
     SEC
-    RTS
-.no
-    CLC
     RTS
 }
 
@@ -403,9 +409,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     STA tank_alive,X                            ; (A = 0)
     \ A kill scores a point and $2500 - unless you killed yourself.
     CPX attacker : BEQ suicide
-    LDX attacker : INC tank_score,X
-    LDA #5 : JSR five_hundreds
-    LDX attacker : JSR money_add
+    LDX attacker : LDA #5 : JSR reward
 .suicide
     LDX i : STX cur
     JSR rand : AND #15 : CMP #DEATH_LINES : BCC @+ : LSR A : .@
@@ -459,10 +463,11 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     \ land on the highest ground under the tank
     LDA tank_x,X : SEC : SBC #TANK_HALF : TAY
     LDA #FLOOR : STA land
-    LDA #2*TANK_HALF+1 : STA i
+    LDX #2*TANK_HALF+1
 .col
     LDA ground,Y : CMP land : BCS @+ : STA land : .@
-    INY : DEC i : BNE col
+    INY : DEX : BNE col
+    LDX cur
     DEC land                                    ; the row above it
     LDA land : CMP tank_y,X : BEQ next : BCC next
     SBC tank_y,X : STA i                        ; how far it falls
@@ -490,8 +495,8 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 
 .clear_status
 {
-    LDA #0 : STA rect_x0 : STA bg_y0
-    LDA #SCREEN_W-1 : STA rect_x1
+    LDX #0 : STX rect_x0 : STX bg_y0
+    DEX : STX rect_x1                           ; (repaint clips it)
     LDA #TOP-1 : STA bg_y1
     \ (the model is sky up here, and skyrow is black above TOP)
     JMP repaint
