@@ -64,7 +64,7 @@ Never assume a change worked: `make`, run it, look.
 - `src/memory.6502` lays out every table and per-player array in guarded
   sections. **Never hand-place an address**: two overlaps happened before
   this file existed, and neither showed in testing.
-- Zero page `&00-&8F` is baron's allocator pool (`ZA_AUTO`). Private
+- Zero page `&00-zp_fixed-1` is baron's allocator pool (`ZA_AUTO`); `zp_fixed`-&8F holds the busiest per-player arrays (memory.6502). Private
   scratch bytes inside routines (`.t EQUB 0`) are invisible to it: a
   routine must not use one across a call that could re-enter it.
 - The screen is cut to `SCREEN_ROWS` (29) character rows at `&8000 -
