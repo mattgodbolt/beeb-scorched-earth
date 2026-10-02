@@ -36,17 +36,17 @@ DEATH_LINES  = 10
     JSR seek
 .count
     INX : JSR unpack : BNE count                ; (from X = &FF)
-    TXA : ASL A : ASL A : STA len               ; pixels
     \ centred over the tank, kept on the screen
-    LSR A : STA x0
+    TXA : ASL A : STA x0                        ; half its width
+    ASL A : STA len                             ; its width in pixels
     LDX cur : LDA tank_x,X : SEC : SBC x0 : BCS @+ : LDA #0 : .@
     AND #&FE : STA x0
     CLC : ADC len : BCS clip : CMP #SCREEN_W+1 : BCC @+
 .clip
-    LDA #SCREEN_W : SEC : SBC len : STA x0
+    LDA #SCREEN_W : SBC len : STA x0            ; (both ways here set carry)
 .@  LDA x0 : STA text_x : STA rect_x0
-    CLC : ADC len : SBC #0 : STA rect_x1
-    LDA tank_y,X : SEC : SBC #20
+    CLC : ADC len : SBC #0 : STA rect_x1        ; (which sets carry)
+    LDA tank_y,X : SBC #20
     CMP #TOP : BCS @+ : LDA #TOP : .@
     STA text_y : STA bg_y0
     CLC : ADC #5 : STA bg_y1
