@@ -18,14 +18,15 @@ ZA_AUTO1 glow_phase
     EQUB C_WHITE EOR 7, C_YELLOW EOR 7, C_YELLOW EOR 7, C_RED EOR 7
     EQUB C_RED EOR 7, C_YELLOW EOR 7, C_RED EOR 7, C_MAGENTA EOR 7
 
-\ Advance the glow one step.
+\ Advance the glow one step. Colour 8 + i shows hot_colours[(phase + i)
+\ AND 7]; the loop steps glow_phase once per colour, so with the INC
+\ first it moves on 9 a call, which is one step as far as AND 7 can see.
 .glow
 {
     INC glow_phase
     LDY #C_HOT << 4                             ; logical colour, top nibble
 .loop
-    TYA : LSR A : LSR A : LSR A : LSR A
-    CLC : ADC glow_phase : AND #7 : TAX
+    LDA glow_phase : AND #7 : TAX : INC glow_phase
     TYA : ORA hot_colours,X : STA ula_pal
     TYA : CLC : ADC #&10 : TAY : BCC loop
     RTS
@@ -45,41 +46,40 @@ ZA_AUTO1 glow_phase
 \ Spans relative to the disc centre.
 
 \ Fill row Y from disc_cx + span_l to disc_cx + span_r (signed offsets),
-\ clipped to the screen, in the current fill_mode. Preserves Y.
+\ clipped to the screen, in the current fill_mode. Preserves Y (hspan
+\ does).
+\ disc_cx is on the screen and the offsets are at most MAX_R/2 either
+\ way, so an end off the left edge wraps round to SCREEN_W or more, just
+\ like one off the right: one compare finds both, and the offset's sign
+\ says which edge it was.
 ZA_AUTO1 span_l, span_r
 .span_rel
 {
-    ZA_AUTO1 ysave
-    STY ysave
-    LDA span_r : BMI rneg
-    CLC : ADC disc_cx : BCS rclip : CMP #SCREEN_W : BCC rok
-.rclip
-    LDA #SCREEN_W-1 : BNE rok
-.rneg
-    CLC : ADC disc_cx : BCC off                 ; right end off the left edge
+    LDA span_r : CLC : ADC disc_cx : CMP #SCREEN_W : BCC rok
+    BIT span_r : BMI off                        ; right end off the left edge
+    LDA #SCREEN_W-1
 .rok
     STA span_x1
-    LDA span_l : BMI lneg
-    CLC : ADC disc_cx : BCS off : CMP #SCREEN_W : BCS off
-    BCC lok
-.lneg
-    CLC : ADC disc_cx : BCS lok
+    LDA span_l : CLC : ADC disc_cx : CMP #SCREEN_W : BCC lok
+    BIT span_l : BPL off                        ; left end off the right edge
     LDA #0
 .lok
     STA span_x0
-    LDA fill_mode : BEQ solid
-    CMP #FILL_SKY : BEQ sky                     ; (carry set either way)
-    LDA dirtrow,Y : BCS go
-.sky
-    LDA skyrow,Y : BCS go
-.solid
+    ASSERT FILL_SOLID = 0 AND FILL_SKY = 1 AND FILL_DIRT = 2
     LDA fill_byte
+    LDX fill_mode : BEQ go
+    LDA skyrow,Y : DEX : BEQ go
+    LDA dirtrow,Y
 .go
-    JSR hspan
+    JMP hspan
 .off
-    LDY ysave
     RTS
 }
+
+\ Fill the whole disc of radius disc_r.
+.fill_disc
+    JSR make_profile
+    \ fall through
 
 \ For dy = 0..disc_r, call the row routine with Y = each on-screen row of
 \ the disc (two rows per dy, one for dy = 0) and X = dy. Rows are clipped
@@ -92,39 +92,38 @@ ZA_AUTO1 row_dy
 .loop
     LDA disc_cy : SEC : SBC row_dy : BCC below
     CMP #TOP : BCC below
-    TAY : LDX row_dy : JSR do_row
+    TAY : JSR do_row
 .below
     LDA row_dy : BEQ next
     LDA disc_cy : CLC : ADC row_dy : BCS next
     CMP #FLOOR : BCS next
-    TAY : LDX row_dy : JSR do_row
+    TAY : JSR do_row
 .next
-    LDA row_dy : CMP disc_r : BEQ done
-    INC row_dy : BNE loop                       ; (always: dy <= MAX_R)
-.done
+    LDA row_dy : INC row_dy : CMP disc_r : BNE loop
     RTS
 .do_row
+    LDX row_dy
     LDA fill_mode : BEQ ring_row
 }
 
 \ A whole row of the disc.
 .full_row
-{
     LDA profile,X : STA span_r
-    EOR #&FF : CLC : ADC #1 : STA span_l
+    \ fall through
+\ Row X of the disc from its left edge to span_r.
+.left_part
+    LDA profile,X : EOR #&FF : CLC : ADC #1 : STA span_l
     JMP span_rel
-}
 
 \ The part of a row of disc k that disc k-1 did not cover.
 .ring_row
 {
-    LDA disc_r : CMP #1 : BEQ full_row          ; ring 1 is the whole disc
+    LDA disc_r : LSR A : BEQ full_row           ; ring 1 is the whole disc
     CPX disc_r : BEQ full_row                   ; the new top and bottom rows
     LDA profile_prev,X : CMP profile,X : BCS none   ; nothing new on this row
     \ left part: -p .. -q-1
     EOR #&FF : STA span_r                       ; -q-1
-    LDA profile,X : EOR #&FF : CLC : ADC #1 : STA span_l
-    JSR span_rel
+    JSR left_part
     \ right part: q+1 .. p
     LDX row_dy
     LDA profile_prev,X : CLC : ADC #1 : STA span_l
@@ -134,48 +133,38 @@ ZA_AUTO1 row_dy
     RTS
 }
 
-\ Fill the whole disc of radius disc_r.
-.fill_disc
-{
-    JSR make_profile
-    JMP disc_rows
-}
-
 \ ---------------------------------------------------------------------------
 \ The blast: rings grow out from the centre in the eight hot colours, the
 \ glow cycles them for a moment, and then the whole ball is gone, leaving
 \ sky. disc_cx, disc_cy and expl_r say where and how big.
 
+\ Ring k is drawn with disc_r = k.
 .blast
 {
-    ZA_AUTO1 k
     JSR glow
+    ASSERT FILL_SOLID = 0
     LDA #FILL_SOLID : STA fill_mode
-    LDA #0 : STA profile                        ; (the radius-0 disc)
-    LDA #1 : STA k
+    STA profile                                 ; (the radius-0 disc)
+    LDA #1 : STA disc_r
 .ring
-    \ keep the last ring's profile, make this one's
-    LDX k : DEX
+    \ keep the last ring's profile; fill_disc makes this one's
+    LDX disc_r : DEX
 .copy
     LDA profile,X : STA profile_prev,X
     DEX : BPL copy
-    LDA k : STA disc_r
-    JSR make_profile
-    LDA k : AND #7 : ORA #C_HOT : TAX : LDA cbytes,X : STA fill_byte
-    JSR disc_rows
+    LDA disc_r : AND #7 : ORA #C_HOT : TAX : LDA cbytes,X : STA fill_byte
+    JSR fill_disc
     \ Big blasts draw two rings a frame.
     LDA expl_r : CMP #16 : BCC sync
-    LDA k : AND #1 : BEQ nosync
+    LDA disc_r : LSR A : BCC nosync
 .sync
     JSR wait_vsync : JSR glow
 .nosync
-    LDA k : CMP expl_r : BEQ held
-    INC k : BNE ring                            ; (always)
-.held
-    LDA #16 : STA k
+    LDA disc_r : INC disc_r : CMP expl_r : BNE ring
+    LDA #16 : STA disc_r                        ; (just a count, here)
 .hold
     JSR wait_vsync : JSR wait_vsync : JSR glow
-    DEC k : BNE hold
+    DEC disc_r : BNE hold
     \ Gone: sky where the ball was.
     LDA #FILL_SKY : STA fill_mode
     LDA expl_r : STA disc_r
@@ -189,25 +178,30 @@ ZA_AUTO1 row_dy
 
 ZA_AUTO1 fall_n             ; columns in the fall queue
 
+ZA_AUTO1 hole_top, hole_bot
+
+\ Carve the crater of the disc (disc_cx, disc_cy, disc_r) into the model.
+.carve
+    LDA #FILL_SKY : STA fill_mode               ; (sky is what is left)
+    JSR make_profile
+    \ fall through
+
 \ For each column of the disc, call the column routine with X = screen
 \ column and hole_top..hole_bot = the disc's rows there (clipped to
-\ TOP..FLOOR-1): dirt_col when adding dirt, else carve_col.
-ZA_AUTO1 hole_top, hole_bot, col_x
+\ TOP..FLOOR-1): dirt_col when adding dirt, else carve_col. Starts the
+\ fall queue afresh.
 .disc_cols
 {
-    ZA_AUTO1 dx, n
+    ZA_AUTO1 dx, t
+    LDA #0 : STA fall_n
     LDA profile : EOR #&FF : CLC : ADC #1 : STA dx      ; -P
-    LDA profile : ASL A : STA n : INC n                 ; 2P+1 columns
 .loop
+    \ (Off the left edge wraps round to SCREEN_W or more: see span_rel.)
     LDA dx : CLC : ADC disc_cx
-    LDY dx : BMI neg
-    BCS next : CMP #SCREEN_W : BCS next : BCC on
-.neg
-    BCC next
-.on
-    STA col_x
-    LDA dx : BPL @+ : EOR #&FF : CLC : ADC #1 : .@
-    TAX : LDA colspan,X : STA t
+    CMP #SCREEN_W : BCS next
+    TAX
+    LDA dx : BPL @+ : EOR #&FF : ADC #1 : .@    ; (carry clear)
+    TAY : LDA colspan,Y : STA t
     LDA disc_cy : SEC : SBC t : BCC clamp_top : CMP #TOP : BCS @+
 .clamp_top
     LDA #TOP
@@ -216,15 +210,13 @@ ZA_AUTO1 hole_top, hole_bot, col_x
 .clamp_bot
     LDA #FLOOR-1
 .@  STA hole_bot
-    LDX col_x
     JSR do_col
 .next
-    INC dx
-    DEC n : BNE loop
+    LDA dx : INC dx : CMP profile : BNE loop    ; up to dx = P
     RTS
-.t EQUB 0
 .do_col
-    LDA fill_mode : CMP #FILL_DIRT : BEQ dirt_col
+    ASSERT FILL_SKY = 1 AND FILL_DIRT = 2
+    LDA fill_mode : LSR A : BCC dirt_col
 }
 
 \ Blow a hole: the dirt in hole_top..hole_bot goes, and whatever was above
@@ -239,10 +231,11 @@ ZA_AUTO1 hole_top, hole_bot, col_x
     RTS
 .floating
     \ dirt from ground..hole_top-1 falls by hole_bot-hole_top+1
-    LDA hole_top : SEC : SBC #1 : STA fall_b
-    LDA hole_bot : SEC : SBC fall_b : STA fall_d
+    TAY                                         ; (old ground, for the queue)
+    LDA hole_top : SBC #0 : STA fall_b          ; (carry clear: -1)
+    LDA hole_bot : SBC fall_b : STA fall_d      ; (carry set: no borrow)
     CLC : ADC ground,X : STA ground,X
-    SEC : SBC fall_d                            ; (old ground, for the queue)
+    TYA
     JMP queue_fall
 }
 
@@ -252,42 +245,31 @@ ZA_AUTO1 hole_top, hole_bot, col_x
 {
     LDA hole_top : CMP ground,X : BCS none      ; all of it already dirt
     \ bottom of the new block: min(hole_bot, ground - 1)
-    LDA ground,X : SEC : SBC #1
+    LDA ground,X : SBC #0                       ; (carry clear: -1)
     CMP hole_bot : BCC @+ : LDA hole_bot : .@
     STA fall_b
     \ it falls ground - 1 - fall_b ...
     LDA ground,X : CLC : SBC fall_b : STA fall_d
-    \ ... and the ground rises by its height
-    LDA fall_b : SEC : SBC hole_top : STA t     ; height - 1
-    LDA ground,X : CLC : SBC t                  ; ground - height
-    CMP #TOP : BCS @+ : LDA #TOP : .@
-    STA ground,X
+    \ ... and the ground rises by its height, fall_b - hole_top + 1, to
+    \ hole_top + fall_d (never above TOP, as hole_top isn't)
+    CLC : ADC hole_top : STA ground,X
     LDA fall_d : BEQ none
     LDA hole_top : JMP queue_fall
 .none
     RTS
-.t EQUB 0
 }
 
-\ Queue a block of dirt to fall: column col_x, rows A..fall_b, by fall_d.
+\ Queue a block of dirt to fall: column X, rows A..fall_b, by fall_d.
 ZA_AUTO1 fall_b, fall_d
 .queue_fall
 {
     LDY fall_n
     STA fall_top,Y
-    LDA col_x : STA fall_x,Y
+    TXA : STA fall_x,Y
     LDA fall_b : STA fall_bot,Y
     LDA fall_d : STA fall_dist,Y
     INC fall_n
     RTS
-}
-
-\ Carve the crater of the disc (disc_cx, disc_cy, disc_r) into the model.
-.carve
-{
-    LDA #FILL_SKY : STA fill_mode               ; (sky is what is left)
-    JSR make_profile
-    JMP disc_cols
 }
 
 \ Drop a ball of dirt: draw it, then add it to the model.
@@ -301,30 +283,30 @@ ZA_AUTO1 fall_b, fall_d
 \ Let everything in the fall queue drop, a few rows a frame.
 .run_falls
 {
-    ZA_AUTO1 i, moving, steps
+    ZA_AUTO1 i, moving, steps, under
 .frame
     LDA #3 : STA steps
 .step
     LDA fall_n : BEQ done
-    LDA #0 : STA moving : STA i
+    LDX #0 : STX moving
 .col
-    LDX i : LDA fall_dist,X : BEQ next
+    STX i
+    LDA fall_dist,X : BEQ next
     DEC fall_dist,X
     INC moving
     \ top pixel of the block becomes sky, the one under it becomes dirt
-    LDY fall_top,X : LDA fall_x,X : TAX
-    LDA skyrow,Y : JSR plot
-    LDX i : INC fall_top,X
-    INC fall_bot,X : LDY fall_bot,X : LDA fall_x,X : TAX
-    LDA dirtrow,Y : JSR plot
+    LDY fall_top,X : INC fall_top,X
+    INC fall_bot,X : LDA fall_bot,X : STA under
+    LDA fall_x,X : TAX
+    LDA skyrow,Y : JSR plot                     ; (plot keeps X and Y)
+    LDY under : LDA dirtrow,Y : JSR plot
 .next
-    INC i : LDA i : CMP fall_n : BNE col
+    LDX i : INX : CPX fall_n : BNE col
     LDA moving : BEQ done
     DEC steps : BNE step
     JSR wait_vsync
     JMP frame
 .done
-    LDA #0 : STA fall_n
     RTS
 }
 
@@ -335,7 +317,7 @@ ZA_AUTO1 fall_b, fall_d
 ZA_AUTO1 blast_power        ; damage at the very centre
 .damage_tanks
 {
-    ZA_AUTO1 reach, dist
+    ZA_AUTO1 reach
     ZA_AUTO2 dsq
     LDA expl_r : CLC : ADC #3 : STA reach
     LDX #0
@@ -357,7 +339,7 @@ ZA_AUTO1 blast_power        ; damage at the very centre
     LDA umul8.lo : STA dsq : LDA umul8.hi : STA dsq+1
     \ dy = |tank_y - 2 - cy|
     LDX cur
-    LDA tank_y,X : SEC : SBC #2 : SEC : SBC disc_cy
+    LDA tank_y,X : SEC : SBC #2 : SBC disc_cy   ; (tank_y > 2: carry set)
     BCS @+ : EOR #&FF : ADC #1 : .@
     CMP #80 : BCS far
     TAX : JSR umul8
@@ -375,14 +357,13 @@ ZA_AUTO1 blast_power        ; damage at the very centre
 .far
     RTS
 .near
-    DEY : STY dist
     \ damage = (reach - dist) * blast_power / reach, which is never more
-    \ than blast_power, so fits in a byte
-    LDA reach : SEC : SBC dist
+    \ than blast_power, so fits in a byte. dist is Y - 1, and the carry is
+    \ clear: reach + NOT(Y - 2) = reach - (Y - 2) - 1 = reach - dist.
+    DEY : DEY : TYA : EOR #&FF : ADC reach
     LDX blast_power : JSR umul8
-    LDA umul8.lo : STA div16.n : LDA umul8.hi : STA div16.n+1
     LDA reach : JSR div16
-    LDA div16.n : JMP hurt
+    LDA umul8.lo : JMP hurt
 }
 
 \ Tank `cur` takes A points of damage (shield first). Pays the attacker.
@@ -404,7 +385,7 @@ ZA_AUTO1 blast_power        ; damage at the very centre
 .unshielded
     \ Only the health actually lost counts, so overkill pays no extra.
     LDA tank_health,X : CMP dmg : BCS @+ : STA dmg : .@
-    LDA tank_health,X : SEC : SBC dmg : STA tank_health,X
+    SEC : SBC dmg : STA tank_health,X           ; (A is still the health)
     \ Damage pays the attacker - unless it was their own tank.
     LDA dmg : JSR damage_pay
     LDX attacker : CPX cur : BEQ own
@@ -415,17 +396,17 @@ ZA_AUTO1 blast_power        ; damage at the very centre
 ZA_AUTO1 attacker, shields_broke
 .bit EQUB 1, 2, 4, 8, 16, 32
 
-\ 16 / 8 divide: div16.n / A -> div16.n, remainder in A.
+\ 16 / 8 divide of umul8's product (straight from a multiply, its only
+\ use): umul8.lo/hi / A -> umul8.lo/hi, remainder in A.
 .div16
 {
-    ZA_AUTO2 n
     ZA_AUTO1 d
     STA d
     LDA #0
     LDX #16
 .bit
-    ASL n : ROL n+1 : ROL A
-    CMP d : BCC @+ : SBC d : INC n : .@
+    ASL umul8.lo : ROL umul8.hi : ROL A
+    CMP d : BCC @+ : SBC d : INC umul8.lo : .@
     DEX : BNE bit
     RTS
 }

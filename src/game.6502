@@ -25,13 +25,14 @@ MAX_WIND = 20
 .empty
     DEX : STA inv,X : BNE empty
     ASSERT MAXP*NITEMS <= 256
-    LDX #MAXP*3-1
+    \ No money and no score: one run of memory.
+    ASSERT tank_score = tank_money + MAXP*3
+    LDX #MAXP*4-1
 .broke
     STA tank_money,X : DEX : BPL broke
     LDX #MAXP-1
 .fresh
-    STA tank_score,X : STA tank_weapon,X
-    DEX : BPL fresh
+    STA tank_weapon,X : DEX : BPL fresh
     STA round_no
 .round
     INC round_no
@@ -41,43 +42,53 @@ MAX_WIND = 20
     LDA round_no
 .first
     SEC : SBC num_players : BCS first
-    ADC num_players : STA cur
+    ADC num_players : TAX
 .turn
-    LDX cur : LDA tank_alive,X : BEQ next
+    STX cur
+    LDA tank_alive,X : BEQ next
     STX attacker
     LDA tank_type,X : BNE computer
-    JSR aim
-    BCC shoot
-    JMP game
+    JSR aim : BCS game                          ; ESCAPE: give up the game
+    BCC shoot                                   ; (always)
 .computer
     JSR ai_turn
 .shoot
     JSR fire
-    JSR spectators
-    JSR count_alive : CMP #2 : BCC round_over
+    \ Once every human in the game is dead, nobody wants to watch the
+    \ computers finish the round at full speed: fast-forward it.
+    LDX #0 : LDY #0
+.humans
+    LDA tank_type,X : BNE @+
+    INY                                         ; a human...
+    LDA tank_alive,X : BNE watching             ; ...still in it
+.@  INX : CPX num_players : BNE humans
+    TYA : BEQ watching                          ; (an all-computer game)
+    ROR ff                                      ; (carry set by the CPX)
+.watching
+    \ Is anyone left but one? X = the one tank seen alive so far, or &FF.
+    LDX #&FF : LDY num_players
+.census
+    DEY : BMI round_over                        ; one or none: X says who
+    LDA tank_alive,Y : BEQ census
+    TXA : BPL play_on                           ; a second: play on
+    TYA : TAX : BPL census                      ; (always)
+.play_on
     \ Computers can stalemate - a tank behind a cliff in a headwind - so
     \ a round that drags on is called a draw.
     INC turns : LDA turns : CMP #MAX_TURNS : BCS stalemate
+    LDX cur
 .next
-    INC cur : LDA cur : CMP num_players : BNE turn
-    LDA #0 : STA cur : JMP turn
-.stalemate
-    LDA #80 : JSR wait_frames
-    LDX #&FF : BNE decided
+    INX : CPX num_players : BNE turn
+    LDX #0 : BEQ turn
 .round_over
     \ The last tank standing scores and is paid; then the scores.
     LDA #0 : STA ff
-    LDA #80 : JSR wait_frames
-    LDX #&FF
-    LDY #0
-.find
-    LDA tank_alive,Y : BEQ @+ : TYA : TAX : .@
-    INY : CPY num_players : BNE find
-.decided
+    BITABS                                      ; (skips the LDX)
+.stalemate
+    LDX #&FF                                    ; nobody won
+    LDA #80 : JSR wait_frames                   ; (keeps X)
     TXA : PHA : BMI nowin
-    INC tank_score,X
-    LDA #20 : JSR five_hundreds
-    PLA : PHA : TAX : JSR money_add
+    LDA #20 : JSR reward
     JSR snd_fanfare
 .nowin
     PLA : JSR scores
@@ -90,31 +101,13 @@ MAX_WIND = 20
     JMP game
 }
 
-\ Once every human in the game is dead, nobody wants to watch the
-\ computers finish the round at full speed: fast-forward it.
-.spectators
+\ Player X scores a point and wins A * $500.
+.reward
 {
-    LDX #0 : LDY #0
-.loop
-    LDA tank_type,X : BNE next
-    INY                                         ; a human...
-    LDA tank_alive,X : BNE playing              ; ...still in it
-.next
-    INX : CPX num_players : BNE loop
-    TYA : BEQ playing                           ; (an all-computer game)
-    LDA #&80 : STA ff
-.playing
-    RTS
-}
-
-\ How many tanks are alive? -> A
-.count_alive
-{
-    LDX #0 : LDA #0
-.loop
-    LDY tank_alive,X : BEQ @+ : CLC : ADC #1 : .@
-    INX : CPX num_players : BNE loop
-    RTS
+    ZA_AUTO1 who
+    INC tank_score,X
+    STX who : JSR five_hundreds
+    LDX who : JMP money_add
 }
 
 \ A fresh landscape, wind and walls, and everyone back at full health.
@@ -171,31 +164,32 @@ MAX_WIND = 20
     JSR rand
 .mod
     CMP t : BCC @+ : SBC t : BCS mod : .@      ; (SBC left carry set)
+    ADC x                                       ; (carry clear from the BCC)
     LSR t
-    CLC : ADC x : SEC : SBC t
+    SEC : SBC t
     \ kept on the screen
     CMP #TANK_HALF+1 : BCS @+ : LDA #TANK_HALF+1 : .@
     CMP #SCREEN_W-TANK_HALF-1 : BCC @+ : LDA #SCREEN_W-TANK_HALF-2 : .@
-    STA x
     LDY slot : LDX order,Y : ZA_INDEXEDBY 0..MAXP-1
     STA tank_x,X
-    \ flatten the pad and stand on it
+    \ flatten the pad and stand on it (Y = tank_x from here on)
     TAY : LDA ground,Y : STA t
     SEC : SBC #1 : STA tank_y,X
-    LDA #1 : STA tank_alive,X
+    \ aim at the middle of the screen, half power
+    ASSERT HI(500) = 1
+    LDA #1 : STA tank_alive,X : STA tank_power_hi,X
+    LDA #LO(500) : STA tank_power_lo,X
     LDA #100 : STA tank_health,X
     LDA #0 : STA tank_shield,X : STA tank_tries,X
-    \ aim at the middle of the screen, half power
-    LDA #HI(500) : STA tank_power_hi,X
-    LDA #LO(500) : STA tank_power_lo,X
     LDA #45
-    LDY x : CPY #SCREEN_W/2 : BCC @+ : LDA #135 : .@
+    CPY #SCREEN_W/2 : BCC @+ : LDA #135 : .@
     STA tank_angle,X
-    LDA x : SEC : SBC #TANK_HALF : TAY
+    ASSERT TANK_HALF = 3
+    DEY : DEY : DEY                             ; the pad's left end
     LDA t : LDX #2*TANK_HALF
 .flatten
     STA ground,Y : INY : DEX : BPL flatten
-    INC slot : LDA slot : CMP num_players : JNE tank
+    INC slot : LDA slot : CMP num_players : BNE tank
     RTS
 }
 \ The width of each tank's slot of the screen, by number of players.
@@ -210,22 +204,23 @@ MAX_WIND = 20
 .aim
 {
     ZA_AUTO1 held, k
-    LDA #0 : STA held
     JSR clamp_power
     JSR draw_status
     JSR draw_tank
+    \ held counts the frames up or down has been held. Any frame with no
+    \ key down, or a key other than an arrow (which waits for release),
+    \ starts it again.
+.none
+    LDA #0 : STA held
 .frame
     JSR wait_vsync
     \ The first key in keys (from the end) that is down picks the handler.
-    LDA #NKEYS-1 : STA k
+    LDY #NKEYS-1
 .scan
-    LDY k
-    CPY #NKEYS-5 : BNE @+
-    LDA #0 : STA held                           ; no arrow key is down
-.@
+    STY k
     LDX keys,Y : JSR key_down : BNE found
-    DEC k : BPL scan
-    BMI frame
+    LDY k : DEY : BPL scan
+    BMI none
 .found
     LDY k
     LDA go_hi,Y : PHA : LDA go_lo,Y : PHA
@@ -253,7 +248,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     JSR wait_vsync
     LDA #122 : JSR osbyte                       ; any key still down?
     CPX #&FF : BNE release
-    JMP frame
+    BEQ none
 .battery
     \ +10 health, up to 100
     LDA #I_BATTERY : JSR inv_index : LDA inv,X : BEQ release
@@ -272,7 +267,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDX cur : LDA tank_angle,X : CMP #180 : BCS again
     JSR erase_barrel
     LDX cur : INC tank_angle,X
-    JMP turned
+    BNE turned                                  ; (always: 1-180)
 .right
     LDX cur : LDA tank_angle,X : BEQ again
     JSR erase_barrel
@@ -284,19 +279,19 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     JMP frame
 .up
     JSR power_step
-    LDX cur
     LDA tank_power_lo,X : CLC : ADC power_step.step : STA tank_power_lo,X
     LDA tank_power_hi,X : ADC #0 : STA tank_power_hi,X
-    JSR clamp_power
-    JMP powered
+    BCC clamp                                   ; (always: it's at most 1000)
 .down
+    \ (Lower power never needs clamping to the maximum, but doing it
+    \ anyway saves a jump.)
     JSR power_step
-    LDX cur
     LDA tank_power_lo,X : SEC : SBC power_step.step : STA tank_power_lo,X
     LDA tank_power_hi,X : SBC #0 : STA tank_power_hi,X
-    BCS powered
+    BCS clamp
     LDA #0 : STA tank_power_lo,X : STA tank_power_hi,X
-.powered
+.clamp
+    JSR clamp_power
     JSR draw_power
     JMP frame
 }
@@ -305,38 +300,38 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 \ already: carry set if it did.
 .raise_shield
 {
-    ZA_AUTO1 item
+    CLC
     LDY cur : LDA tank_shield,Y : BNE no
-    \ the strongest one it owns
-    LDA #I_HEAVY : STA item
+    \ the strongest one it owns (inv_index keeps Y)
+    LDY #I_HEAVY
 .try
-    LDA item : JSR inv_index : LDA inv,X : BNE got
-    DEC item : LDA item : CMP #I_SHIELD : BCS try
-    BCC no
+    TYA : JSR inv_index : LDA inv,X : BNE got
+    DEY : CPY #I_SHIELD : BCS try
+.no
+    RTS                                         ; (carry clear)
 .got
     DEC inv,X
-    LDX item : LDA item_radius,X : LDY cur : STA tank_shield,Y
+    LDA item_radius,Y : LDY cur : STA tank_shield,Y
     JSR draw_tank
     SEC
-    RTS
-.no
-    CLC
     RTS
 }
 
 \ How far one frame of holding up/down moves the power: 1 with SHIFT,
-\ else 2, rising to 10 after half a second.
+\ else 2, rising to 10 after half a second. Returns X = cur.
 .power_step
 {
     ZA_AUTO1 step
-    LDA #1 : STA step
-    LDX #K_SHIFT : JSR key_down : BNE done
-    LDA #2 : STA step
-    LDA aim.held : CMP #25 : BCS fast           ; (saturates: no wrapping)
+    LDX #K_SHIFT : JSR key_down
+    LDA #1 : INX : BEQ done                     ; (X = &FF: SHIFT is down)
+    LDA #2
+    LDX aim.held : CPX #25 : BCS fast           ; (saturates: no wrapping)
     INC aim.held : BCC done
 .fast
-    LDA #10 : STA step
+    LDA #10
 .done
+    STA step
+    LDX cur
     RTS
 }
 
@@ -367,14 +362,15 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDX weapon : LDA item_kind,X : CMP #SK_TRACER : BNE @+
     STA shot_trail
     LDX cur : LDA tank_colour,X : TAX : LDA cbytes,X : STA shot_colour
+    BNE shell                                   ; (always: never black)
 .@
     \ A riot charge has no shell: the blast is round your own turret,
     \ centred high enough that it barely digs under you.
-    LDX weapon : LDA item_kind,X : CMP #SK_CHARGE : BNE shell
+    CMP #SK_CHARGE : BNE shell
     LDA item_radius,X : STA expl_r
+    LSR A : ADC #TANK_H : STA disc_cy                ; (r/2 + TANK_H above...)
     LDA #0 : STA blast_power
     LDX cur : LDA tank_x,X : STA disc_cx
-    LDA expl_r : LSR A : ADC #TANK_H : STA disc_cy   ; (r/2 + TANK_H above...)
     LDA tank_y,X : SEC : SBC disc_cy                 ; (...the tank's bottom)
     BCC @+ : CMP #TOP : BCS ok : .@
     LDA #TOP
@@ -396,7 +392,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     JSR spawn_shell
     JSR snd_fire
     JSR fly_shells
-    JMP kill_dead
+    \ fall through
 }
 
 \ Tanks whose health has run out blow up - which may finish off others.
@@ -405,16 +401,15 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     ZA_AUTO1 shooter, i
     LDA cur : STA shooter
 .again
-    LDA #0 : STA i
+    LDX #0
 .loop
-    LDX i : LDA tank_alive,X : BEQ next
+    STX i
+    LDA tank_alive,X : BEQ next
     LDA tank_health,X : BNE next
-    LDA #0 : STA tank_alive,X
+    STA tank_alive,X                            ; (A = 0)
     \ A kill scores a point and $2500 - unless you killed yourself.
     CPX attacker : BEQ suicide
-    LDX attacker : INC tank_score,X
-    LDA #5 : JSR five_hundreds
-    LDX attacker : JSR money_add
+    LDX attacker : LDA #5 : JSR reward
 .suicide
     LDX i : STX cur
     JSR rand : AND #15 : CMP #DEATH_LINES : BCC @+ : LSR A : .@
@@ -430,9 +425,8 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     JSR explosion
     JMP again
 .next
-    INC i : LDA i : CMP num_players : BNE loop
-    LDA shooter : STA cur
-    RTS
+    LDX i : INX : CPX num_players : BNE loop
+    RTS                                         ; (explosion kept cur)
 }
 
 \ A blast at (disc_cx, disc_cy) of radius expl_r doing blast_power: the
@@ -444,10 +438,8 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDA cur : STA shooter
     LDA expl_r : JSR snd_explode
     LDA #0 : STA shields_broke
-    JSR blast
+    JSR blast                                   ; (leaves disc_r = expl_r)
     JSR damage_tanks
-    LDA expl_r : STA disc_r
-    LDA #0 : STA fall_n
     JSR carve
     JSR draw_tanks
     JSR run_falls
@@ -455,30 +447,30 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDA #0 : STA cur
 .domes
     LSR shields_broke : BCC @+ : JSR erase_tank : .@
-    INC cur : LDA cur : CMP #MAXP : BNE domes
+    INC cur : LDA shields_broke : BNE domes     ; (until none are left)
     JSR draw_tanks
-    JSR drop_tanks
-    LDA shooter : STA cur
-    RTS
+    \ fall through
 }
 
 \ Tanks with nothing under them fall to whatever is highest beneath them.
+\ (Only ever the end of an explosion, so it puts cur back afterwards.)
 .drop_tanks
 {
     ZA_AUTO1 land, i
-    LDA #0 : STA cur
+    LDX #0 : STX cur
 .tank
-    LDX cur : LDA tank_alive,X : BEQ next
+    LDA tank_alive,X : BEQ next
     \ land on the highest ground under the tank
     LDA tank_x,X : SEC : SBC #TANK_HALF : TAY
     LDA #FLOOR : STA land
-    LDA #2*TANK_HALF+1 : STA i
+    LDX #2*TANK_HALF+1
 .col
     LDA ground,Y : CMP land : BCS @+ : STA land : .@
-    INY : DEC i : BNE col
+    INY : DEX : BNE col
+    LDX cur
     DEC land                                    ; the row above it
     LDA land : CMP tank_y,X : BEQ next : BCC next
-    SEC : SBC tank_y,X : STA i                  ; how far it falls
+    SBC tank_y,X : STA i                        ; how far it falls
 .fall
     JSR erase_tank
     LDX cur : INC tank_y,X
@@ -493,7 +485,8 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDA i : JSR hurt
     JSR draw_tank
 .next
-    INC cur : LDA cur : CMP num_players : BNE tank
+    INC cur : LDX cur : CPX num_players : BNE tank
+    LDA explosion.shooter : STA cur
     RTS
 }
 
@@ -502,8 +495,8 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 
 .clear_status
 {
-    LDA #0 : STA rect_x0 : STA bg_y0
-    LDA #SCREEN_W-1 : STA rect_x1
+    LDX #0 : STX rect_x0 : STX bg_y0
+    DEX : STX rect_x1                           ; (repaint clips it)
     LDA #TOP-1 : STA bg_y1
     \ (the model is sky up here, and skyrow is black above TOP)
     JMP repaint
@@ -524,7 +517,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDA #C_CYAN : JSR ink
     LDA wind : BEQ calm : BPL east
     PRINT6 "<"
-    LDA wind : EOR #&FF : CLC : ADC #1 : JSR wind_num
+    JSR wind_num
     JMP line2
 .east
     JSR wind_num
@@ -542,7 +535,8 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDA wall_type
     LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_packed_nth
 .wind_num
-    \ wind is shown x10, as the original's 0-200 scale
+    \ wind is shown x10, as the original's 0-200 scale, with no sign
+    LDA wind : BPL @+ : EOR #&FF : CLC : ADC #1 : .@
     LDX #10 : JSR times
     LDA #3 : JMP print_num
 }
@@ -583,7 +577,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDX cur : LDA tank_angle,X
     LDY #62                                     ; >
     CMP #91 : BCC @+
-    EOR #&FF : SEC : ADC #180
+    EOR #&FF : ADC #180                         ; (carry set: 180 - A)
     LDY #60                                     ; <
 .@  TAX : TYA : PHA : TXA                       ; the arrow, for after
     LDX #3 : JSR print_byte
