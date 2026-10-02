@@ -150,15 +150,23 @@ MAX_WIND = 20
 .place_tanks
 {
     ZA_AUTO1 slot, width, x, t
+    ZA_AUTO MAXP, order
     LDX num_players : LDA slot_widths-2,X : STA width
     \ Shuffle who gets which slot.
     LDX #MAXP-1
 .ident
-    TXA : STA order,X : DEX : BPL ident
+    TXA : STA order,X : ZA_INDEXEDBY 0..MAXP-1
+    DEX : BPL ident
     LDX num_players : DEX
 .shuffle
     JSR rand : AND #7 : CMP num_players : BCS shuffle
-    TAY : LDA order,X : PHA : LDA order,Y : STA order,X : PLA : STA order,Y
+    TAY
+    LDA order,X : ZA_INDEXEDBY 0..MAXP-1
+    PHA
+    LDA order,Y : ZA_INDEXEDBY 0..MAXP-1
+    STA order,X : ZA_INDEXEDBY 0..MAXP-1
+    PLA
+    STA order,Y : ZA_INDEXEDBY 0..MAXP-1
     DEX : BNE shuffle
     LDA #0 : STA slot
 .tank
@@ -176,7 +184,7 @@ MAX_WIND = 20
     CMP #TANK_HALF+1 : BCS @+ : LDA #TANK_HALF+1 : .@
     CMP #SCREEN_W-TANK_HALF-1 : BCC @+ : LDA #SCREEN_W-TANK_HALF-2 : .@
     STA x
-    LDY slot : LDX order,Y
+    LDY slot : LDX order,Y : ZA_INDEXEDBY 0..MAXP-1
     STA tank_x,X
     \ flatten the pad and stand on it
     TAY : LDA ground,Y : STA t
@@ -196,7 +204,6 @@ MAX_WIND = 20
     STA ground,Y : INY : DEX : BPL flatten
     INC slot : LDA slot : CMP num_players : JNE tank
     RTS
-.order SKIP MAXP
 }
 \ The width of each tank's slot of the screen, by number of players.
 .slot_widths
@@ -309,6 +316,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 \ else 2, rising to 10 after half a second.
 .power_step
 {
+    ZA_AUTO1 step
     LDA #1 : STA step
     LDX #K_SHIFT : JSR key_down : BNE done
     LDA #2 : STA step
@@ -318,7 +326,6 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDA #10 : STA step
 .done
     RTS
-.step EQUB 0
 }
 
 \ Max power is ten times health.

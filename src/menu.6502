@@ -86,13 +86,13 @@ ENDMACRO
 \ Print player X's name: "PLAYER 1", or the personality for a computer.
 .print_name
 {
+    ZA_AUTO1 t
     STX t
     LDA tank_type,X
     LDX #LO(type_names) : LDY #HI(type_names)
     JSR print_nth
     LDA #32 : JSR draw_char
     LDA t : CLC : ADC #49 : JMP draw_char
-.t EQUB 0
 }
 .type_names
     EQUS "PLAYER", 0, "MORON", 0, "SHOOTER", 0, "TOSSER", 0, "SPOILER", 0, "CYBORG", 0
@@ -363,6 +363,7 @@ ENDMACRO
 \ room for it. Carry set if they did.
 .buy
 {
+    ZA_AUTO1 t
     STA t
     JSR inv_index : LDA inv,X : CMP #99 : BCS no
     LDA t : JSR price
@@ -376,13 +377,13 @@ ENDMACRO
 .no
     CLC
     RTS
-.t EQUB 0
 }
 
 \ A computer player goes shopping: a dozen goes at picking something it
 \ likes, buying it when it can.
 .ai_shop
 {
+    ZA_AUTO1 tries
     LDA #12 : STA tries
 .try
     JSR rand : AND #15 : CMP #ai_likes_end - ai_likes : BCS next
@@ -390,7 +391,6 @@ ENDMACRO
 .next
     DEC tries : BNE try
     RTS
-.tries EQUB 0
 }
 .ai_likes
     EQUB 1, 1, 2, 3, 4, 5, 6, 7, 10, 11, I_PARACHUTE, I_BATTERY, I_SHIELD
@@ -440,6 +440,7 @@ ENDMACRO
 .interest
 {
     ZA_AUTO1 i
+    ZA_AUTO 3, q
     LDA #0 : STA i
 .player
     \ num = money / 16
@@ -460,7 +461,6 @@ ENDMACRO
     LSR num+2 : ROR num+1 : ROR num
     DEY : BNE shift
     RTS
-.q EQUB 0, 0, 0
 }
 
 \ The game is over: whoever scored most is champion.

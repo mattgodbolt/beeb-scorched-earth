@@ -30,6 +30,7 @@ DEATH_LINES  = 10
 .say
 {
     ZA_AUTO1 len, x0
+    ZA_AUTO2 str
     LDX #LO(talk) : LDY #HI(talk)
     JSR find_nth
     STA str : STX str+1
@@ -58,5 +59,4 @@ DEATH_LINES  = 10
     LDA #75 : JSR wait_frames
     JSR repaint
     JMP draw_tanks
-.str EQUW 0
 }
