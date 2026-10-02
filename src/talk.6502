@@ -41,11 +41,13 @@ DEATH_LINES  = 10
     ASL A : STA len                             ; its width in pixels
     LDX cur : LDA tank_x,X : SEC : SBC x0 : BCS @+ : LDA #0 : .@
     AND #&FE : STA x0
-    CLC : ADC len : BCS clip : CMP #SCREEN_W+1 : BCC @+
+    CLC : ADC len : BCS clip : CMP #SCREEN_W+1 : BCC fits
 .clip
     LDA #SCREEN_W : SBC len : STA x0            ; (both ways here set carry)
-.@  LDA x0 : STA text_x : STA rect_x0
-    CLC : ADC len : SBC #0 : STA rect_x1        ; (which sets carry)
+    LDA #SCREEN_W-1                             ; x0 + len, less the carry
+.fits
+    SBC #0 : STA rect_x1                        ; x0 + len - 1, setting carry
+    LDA x0 : STA text_x : STA rect_x0
     LDA tank_y,X : SBC #20
     CMP #TOP : BCS @+ : LDA #TOP : .@
     STA text_y : STA bg_y0

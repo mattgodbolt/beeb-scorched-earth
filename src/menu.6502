@@ -83,17 +83,6 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
     RTS
 }
 
-\ Print packed text from tptr.
-.print_packed
-{
-    LDA #&80 : STA tbits
-.loop
-    JSR unpack : BEQ done
-    JSR draw_char : BNE loop                    ; (A = text_x, never 0)
-.done
-    RTS
-}
-
 \ Point tptr at packed string A of the list at (X lo, Y hi), unpacking its
 \ way past the ones before it. Leaves X = &FF.
 .packed_nth
@@ -111,7 +100,19 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
 
 \ Print packed string A of the list at (X, Y).
 .print_packed_nth
-    JSR packed_nth : JMP print_packed
+    JSR packed_nth
+    \ (on into print_packed)
+
+\ Print packed text from tptr.
+.print_packed
+{
+    LDA #&80 : STA tbits
+.loop
+    JSR unpack : BEQ done
+    JSR draw_char : BNE loop                    ; (A = text_x, never 0)
+.done
+    RTS
+}
 
 \ Print packed text given inline after the JSR, as print_inline once did:
 \     JSR print6 : PACKED "TEXT"
@@ -142,8 +143,8 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
     ZA_AUTO1 to
     STA to
 .pad
-    LDA #32 : JSR draw_char
-    LDA text_x : CMP to : BCC pad
+    LDA #32 : JSR draw_char                     ; -> A = text_x
+    CMP to : BCC pad
     RTS
 }
 
@@ -261,20 +262,27 @@ ENDMACRO
 \ Title and setup.
 
 \ The OS still thinks the screen starts at &3000, so its text row r lands
-\ on our row r - (32 - SCREEN_ROWS). Big letters, one colour each (COLOUR
-\ 1-6 then round again from 2), on our character row 1: all of it VDU codes.
-TITLE = "SCORCHED EARTH"
+\ on our row r - (32 - SCREEN_ROWS). Big letters on our character row 1,
+\ one colour each: letter i is in COLOUR (i AND 7) + 1, or (i AND 7) - 4
+\ from 6 on (1-6, then round again from 2).
 .title_vdu
     EQUB 31, 3, 1 + 32 - SCREEN_ROWS
-    FOR i = 0..<LEN(TITLE)
-        EQUB 17, (i AND 7) MOD 6 + 1 + (i AND 7) DIV 6, CODES(TITLE)[i]
-    NEXT
+.title_text
+    EQUS "SCORCHED EARTH"
 .title_end
 
+\ Clear the screen and put the title on it.
 .draw_title
 {
+    JSR cls
     LDX #0
 .loop
+    CPX #title_text - title_vdu : BCC plain
+    LDA #17 : JSR oswrch                        ; (OSWRCH keeps X)
+    TXA : SEC : SBC #title_text - title_vdu     ; i
+    AND #7 : CMP #6 : BCC @+ : SBC #6 : .@      ; (and SBC sets it again)
+    ADC #1 : JSR oswrch
+.plain
     LDA title_vdu,X : JSR oswrch
     INX : CPX #title_end - title_vdu : BNE loop
     PRINT_AT C_WHITE, 8, 4, "THE MOTHER OF ALL GAMES"
@@ -288,14 +296,15 @@ TITLE = "SCORCHED EARTH"
 .setup
 {
     ZA_AUTO1 i
-    JSR cls
     JSR draw_title
     LDA #0 : STA menu_sel
 .redraw
-    PRINT_AT C_YELLOW, 7, 8, "PLAYERS "
-    LDA num_players : LDX #2 : JSR print_byte
-    PRINT_AT C_YELLOW, 7, 10, "ROUNDS  "
-    LDA num_rounds : LDX #2 : JSR print_byte
+    \ (wider number fields print the spaces, which is shorter than packing
+    \ them)
+    PRINT_AT C_YELLOW, 7, 8, "PLAYERS"
+    LDA num_players : LDX #3 : JSR print_byte
+    PRINT_AT C_YELLOW, 7, 10, "ROUNDS"
+    LDA num_rounds : LDX #4 : JSR print_byte
     \ a line for each menu item: the marker, then for a player its name
     LDA #0 : STA i
 .item
@@ -373,12 +382,14 @@ TITLE = "SCORCHED EARTH"
 {
     ZA_AUTO1 i
     JSR cls
-    LDA #1 : STA menu_sel
     \ (26 items: the list starts on line 2 to fit them all)
-    LDA #1 : LDX #0 : JSR at
+    LDA #1 : STA menu_sel
+    LDX #0 : JSR at                             ; (A = 1: column 1)
     LDX cur : JSR print_name
     PRINT6 " GOES SHOPPING"
-    PRINT_AT C_CYAN, 1, 1, "ITEM             QTY  PRICE OWNED"
+    \ (a run of spaces costs more than another PRINT_AT)
+    PRINT_AT C_CYAN, 1, 1, "ITEM"
+    PRINT_AT C_CYAN, 18, 1, "QTY  PRICE OWNED"
     PRINT_AT C_CYAN, 5, 30, "RETURN BUYS   SPACE TO FIGHT"
 .redraw
     LDA #1 : STA i
@@ -450,9 +461,10 @@ TITLE = "SCORCHED EARTH"
     ZA_AUTO1 t
     STA t
     JSR inv_index : LDA inv,X : CMP #99 : BCS no
+    TXA : PHA                                   ; where it goes, for later
     LDA t : JSR price
-    LDX cur : JSR money_pay : BCC no
-    LDA t : JSR inv_index
+    LDX cur : JSR money_pay
+    PLA : TAX : BCC no
     LDY t : LDA inv,X : CLC : ADC item_bundle,Y
     CMP #99 : BCC @+ : LDA #99 : .@
     STA inv,X
@@ -489,10 +501,10 @@ TITLE = "SCORCHED EARTH"
     ZA_AUTO1 i, winner
     STA winner
     JSR cls
-    PRINT_AT C_WHITE, 13, 3, "ROUND "
-    LDA round_no : LDX #2 : JSR print_byte
-    PRINT6 " OF "
-    LDA num_rounds : LDX #2 : JSR print_byte
+    PRINT_AT C_WHITE, 13, 3, "ROUND"            ; (the spaces: in the fields)
+    LDA round_no : LDX #3 : JSR print_byte
+    PRINT6 " OF"
+    LDA num_rounds : LDX #3 : JSR print_byte
     LDA #12 : LDX #6 : JSR at
     LDX winner : BMI nobody
     JSR print_name
@@ -549,7 +561,6 @@ TITLE = "SCORCHED EARTH"
 .find
     LDA tank_score,X : LDY best : CMP tank_score,Y : BCC @+ : STX best : .@
     INX : CPX num_players : BNE find
-    JSR cls
     JSR draw_title
     LDA #9 : LDX #12 : JSR at
     LDX best : JSR print_name

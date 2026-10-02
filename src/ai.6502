@@ -21,9 +21,11 @@ NTYPES  = 6
 \ horizontal, towards the target).
 \ The 80 degree lob is what gets a shell over a mountain in the way:
 \ without it two Spoilers either side of one could stalemate for ever.
-.ai_wobble  EQUB 0, 0, 60, 120, 70, 35  ; (20 for a Spoiler was murderous)
-.ai_first   EQUB 0, 0, 0, 1, 2, 2       ; index into ai_angles
-.ai_count   EQUB 0, 0, 1, 1, 4, 4
+\ The first three start at SHOOTER: humans and morons don't aim.
+ASSERT SHOOTER = 2
+.ai_wobble  EQUB 60, 120, 70, 35        ; (20 for a Spoiler was murderous)
+.ai_first   EQUB 0, 1, 2, 2             ; index into ai_angles
+.ai_count   EQUB 1, 1, 4, 4
 .ai_angles  EQUB 70, 50, 45, 65, 80, 30
 
 ZA_AUTO1 ai_target, ai_dir, ai_err
@@ -34,7 +36,7 @@ ZA_AUTO2 ai_power
 \ round to it where everyone can see.
 .ai_turn
 {
-    ZA_AUTO1 type, n, k, best_err, best_angle
+    ZA_AUTO1 type, n, k, tried, best_err, best_angle
     ZA_AUTO2 best_power
     \ Say whose turn it is before the thinking starts: a Spoiler can spend
     \ a couple of seconds on its test shots.
@@ -56,29 +58,29 @@ ZA_AUTO2 ai_power
 .mangle
     JSR rand : CMP #121 : BCS mangle
     ADC #30 : STA best_angle
-    LDX #0 : JSR rand : ASL A : BCC @+ : INX : CLC : .@
-    ADC #200 : BCC @+ : INX : .@
-    STA best_power : STX best_power+1
+    LDX #0 : JSR rand : CLC : ADC #100 : BCC @+ : INX : .@
+    ASL A : STA best_power                      ; 2 * (rand + 100)
+    TXA : ROL A : STA best_power+1
     JMP swing
 .aimed_type
     LDA #255 : STA best_err
-    LDX type : LDA ai_count,X : STA n
-    LDA ai_first,X : STA k
+    LDX type : LDA ai_count-SHOOTER,X : STA n
+    LDA ai_first-SHOOTER,X : STA k
 .angle
     LDX k : LDA ai_angles,X
     BIT ai_dir : BPL @+ : EOR #&FF : SEC : ADC #180 : .@  ; mirror for left
-    LDX cur : STA tank_angle,X
+    STA tried : LDX cur : STA tank_angle,X
     JSR search_power
     LDA ai_err : CMP best_err : BEQ better : BCS worse
 .better
     STA best_err
-    LDX cur : LDA tank_angle,X : STA best_angle
+    LDA tried : STA best_angle
     LDA ai_power : STA best_power : LDA ai_power+1 : STA best_power+1
 .worse
     INC k
     DEC n : BNE angle
     \ Spoil it: power +- wobble (a tosser's wobble halves each try).
-    LDX type : LDA ai_wobble,X : STA k
+    LDX type : LDA ai_wobble-SHOOTER,X : STA k
     CPX #TOSSER : BNE wobble
     LDX cur : LDY tank_tries,X : INC tank_tries,X
     CPY #4 : BCC halve : LDY #4                 ; (it never gets perfect)
@@ -90,9 +92,11 @@ ZA_AUTO2 ai_power
     LDX #0 : JSR rand
 .mod
     CMP k : BCC @+ : SBC k : BCS mod : .@       ; (SBC left carry set)
-    ASL A : SEC : SBC k                         ; -k .. k
-    BCS @+ : DEX : .@                           ; X: its high byte
-    CLC : ADC best_power : STA best_power
+    \ X:A = 2A - k - 1 (carry clear: A < 128), and the carry going into
+    \ the ADC adds the 1 back: -k .. k
+    ASL A : SBC k
+    BCS @+ : DEX : SEC : .@                     ; X: its high byte
+    ADC best_power : STA best_power
     TXA : ADC best_power+1 : STA best_power+1
     BPL swing
     LDA #0 : STA best_power : STA best_power+1  ; (not below nothing)
@@ -181,7 +185,7 @@ ZA_AUTO2 ai_power
 \ far from the target it landed.
 .test_shot
 {
-    ZA_AUTO2 prog
+    ZA_AUTO1 prog
     ZA_AUTO1 walls_were
     LDX cur
     LDA ai_power : STA tank_power_lo,X
@@ -199,14 +203,16 @@ ZA_AUTO2 ai_power
 .miss
     \ prog = how far the shell went past the target, away from the firer:
     \ short if negative, and err = |prog|
+    \ (A = its high byte, which sets N and Z)
     LDX ai_target
+    BIT ai_dir : BPL right
+    LDA tank_x,X : SEC : SBC shot_x+2 : STA prog
+    LDA #0 : SBC shot_x+3
+    JMP judge                                   ; (JMP keeps the flags)
+.right
     LDA shot_x+2 : SEC : SBC tank_x,X : STA prog
-    LDA shot_x+3 : SBC #0 : STA prog+1
-    BIT ai_dir : BPL @+
-    LDA #0 : SEC : SBC prog : STA prog
-    LDA #0 : SBC prog+1 : STA prog+1
-.@
-    TAY                                         ; (N and Z: prog's high byte)
+    LDA shot_x+3 : SBC #0
+.judge
     BMI short
     BEQ near
     LDA #255 : BNE long                         ; 256 or more past it
