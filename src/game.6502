@@ -497,15 +497,15 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     \ wind
     LDA #C_CYAN : JSR ink
     LDA wind : BEQ calm : BPL east
-    JSR print_inline : EQUS "<", 0
+    PRINT6 "<"
     LDA wind : EOR #&FF : CLC : ADC #1 : JSR wind_num
     JMP line2
 .east
     JSR wind_num
-    JSR print_inline : EQUS ">", 0
+    PRINT6 ">"
     JMP line2
 .calm
-    JSR print_inline : EQUS "CALM ", 0
+    PRINT6 "CALM "
 .line2
     JSR draw_weapon
     PRINT_XY C_WHITE, 4*21, 9, "HEALTH"
@@ -547,7 +547,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDX cur : LDA tank_weapon,X : BEQ lots
     JSR inv_index : LDA inv,X : LDX #2 : JMP print_byte
 .lots
-    JSR print_inline : EQUS "--", 0
+    PRINT6 "--"
     RTS
 }
 

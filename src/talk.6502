@@ -1,46 +1,42 @@
 \ ***************************************************************************
 \ Talking tanks. The lines are from the original's TALK1.CFG (said when
 \ firing) and TALK2.CFG (said when dying), cut to fit.
+\ Each is PACKED, so finding one means unpacking the ones before it.
 \ ***************************************************************************
 
 ATTACK_LINES = 9
 DEATH_LINES  = 10
 .talk
-    EQUS "EAT MY SHORTS!", 0
-    EQUS "YOU'RE TOAST!", 0
-    EQUS "BANZAI!", 0
-    EQUS "MAKE MY DAY.", 0
-    EQUS "KNOCK, KNOCK.", 0
-    EQUS "OPEN WIDE!", 0
-    EQUS "TAKE THIS, SISSY!", 0
-    EQUS "DON'T TAKE THIS PERSONALLY.", 0
-    EQUS "I WONDER WHAT THIS BUTTON DOES?", 0
-    EQUS "UGH!", 0
-    EQUS "AARGH!", 0
-    EQUS "I'M MELTING!", 0
-    EQUS "FAREWELL, CRUEL WORLD.", 0
-    EQUS "ANOTHER ONE BITES THE DUST.", 0
-    EQUS "I HATE IT WHEN THAT HAPPENS.", 0
-    EQUS "MOMMY? IS THAT YOU?", 0
-    EQUS "THE FAT LADY SANG.", 0
-    EQUS "POW!", 0
-    EQUS "ZONK!", 0
+    PACKED "EAT MY SHORTS!"
+    PACKED "YOU'RE TOAST!"
+    PACKED "BANZAI!"
+    PACKED "MAKE MY DAY."
+    PACKED "KNOCK, KNOCK."
+    PACKED "OPEN WIDE!"
+    PACKED "TAKE THIS, SISSY!"
+    PACKED "DON'T TAKE THIS PERSONALLY."
+    PACKED "I WONDER WHAT THIS BUTTON DOES?"
+    PACKED "UGH!"
+    PACKED "AARGH!"
+    PACKED "I'M MELTING!"
+    PACKED "FAREWELL, CRUEL WORLD."
+    PACKED "ANOTHER ONE BITES THE DUST."
+    PACKED "I HATE IT WHEN THAT HAPPENS."
+    PACKED "MOMMY? IS THAT YOU?"
+    PACKED "THE FAT LADY SANG."
+    PACKED "POW!"
+    PACKED "ZONK!"
 
 \ Tank `cur` says line A, in a bubble over its head, for a second or so.
 .say
 {
-    ZA_AUTO1 len, x0
-    ZA_AUTO2 str
-    LDX #LO(talk) : LDY #HI(talk)
-    JSR find_nth
-    STA str : STX str+1
+    ZA_AUTO1 len, x0, line
+    STA line
     \ how wide is it?
-    LDY #0
+    JSR seek
 .count
-    LDA (find_nth.ptr),Y : BEQ counted
-    INY : BNE count
-.counted
-    TYA : ASL A : ASL A : STA len               ; pixels
+    INX : JSR unpack : BNE count                ; (seek left X = -1)
+    TXA : ASL A : ASL A : STA len               ; pixels
     \ centred over the tank, kept on the screen
     LSR A : STA x0
     LDX cur : LDA tank_x,X : SEC : SBC x0 : BCS @+ : LDA #0 : .@
@@ -55,8 +51,20 @@ DEATH_LINES  = 10
     STA text_y : STA bg_y0
     CLC : ADC #5 : STA bg_y1
     LDA tank_colour,X : JSR ink
-    LDA str : LDX str+1 : JSR print_string
+    JSR seek : JSR print_packed
     LDA #75 : JSR wait_frames
     JSR repaint
     JMP draw_tanks
+
+\ Point tptr at the start of the line, skipping the ones before it.
+.seek
+    LDA #LO(talk) : STA tptr : LDA #HI(talk) : STA tptr+1
+    LDX line
+.skip
+    LDA #&80 : STA tbits                        ; each line starts a byte
+    DEX : BMI found
+.@  JSR unpack : BNE @-
+    BEQ skip
+.found
+    RTS
 }

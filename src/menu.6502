@@ -48,23 +48,78 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     RTS
 }
 
-\ Print a string somewhere in some colour, all given inline after the JSR:
-\     JSR print_at : EQUB colour, x, y : EQUS "TEXT", 0
+\ Packed text. The font has 64 characters, so each takes six bits:
+\ PACKED "TEXT" assembles four characters to three bytes, ending with code
+\ 63 (an underline, which no text uses) and padded to a whole byte.
+FUNCTION codes6(s) = CONCAT(CODES(s) - 32, 63, 0)
+MACRO PACKED text
+    FOR k = 0..<(LEN(text) * 6 + 13) DIV 8
+        EQUB ((codes6(text)[k * 8 DIV 6] * 64 + codes6(text)[k * 8 DIV 6 + 1]) >> (4 - k * 8 MOD 6)) AND 255
+    NEXT
+ENDMACRO
+
+ZA_AUTO2 tptr               ; the next byte of packed text
+ZA_AUTO1 tbits              ; what is left of the last one, then a 1
+
+\ The next character of packed text -> A, with Z set at the end.
+\ tbits must start at &80 (empty) for each string.
+.unpack
+{
+    LDA #4                                      ; shifts out after 6 bits
+.bit
+    ASL tbits : BNE got
+    PHA : JSR fetch : SEC : ROL A : STA tbits : PLA
+.got
+    ROL A : BCC bit
+    ADC #31 : CMP #95                           ; (+32: the 4 left carry set)
+    RTS
+}
+
+\ The byte at tptr -> A, and tptr moves on.
+.fetch
+{
+    LDY #0 : LDA (tptr),Y
+    INC tptr : BNE @+ : INC tptr+1 : .@
+    RTS
+}
+
+\ Print packed text from tptr.
+.print_packed
+{
+    LDA #&80 : STA tbits
+.loop
+    JSR unpack : BEQ done
+    JSR draw_char
+    JMP loop
+.done
+    RTS
+}
+
+\ Print packed text given inline after the JSR, as print_inline does:
+\     JSR print6 : PACKED "TEXT"
+\ or put it somewhere in some colour first:
+\     JSR print_at : EQUB colour, x, y : PACKED "TEXT"
 \ with x and y in pixels. Most of the text on the screens between rounds
 \ is placed like this; the PRINT_AT macro takes columns and lines.
 .print_at
+    SEC : BCS inline
+.print6
+    CLC
+.inline
 {
-    ZA_AUTO2 ptr
-    PLA : STA ptr : PLA : STA ptr+1
-    LDY #3 : LDA (ptr),Y : STA text_y
-    DEY : LDA (ptr),Y : STA text_x
-    DEY : LDA (ptr),Y : JSR ink
-    \ print_inline does the rest, from past those three bytes
-    LDA ptr : CLC : ADC #3 : TAX
-    LDA ptr+1 : ADC #0 : PHA
-    TXA : PHA
-    JMP print_inline
+    PLA : STA tptr : PLA : STA tptr+1           ; (carry survives to BCC)
+    JSR fetch                                   ; the JSR's own last byte
+    BCC text
+    JSR fetch : PHA
+    JSR fetch : STA text_x
+    JSR fetch : STA text_y
+    PLA : JSR ink
+.text
+    JSR print_packed
+    JMP (tptr)                                  ; just past the text
+    ZA_RETURN
 }
+
 \ Print spaces (at least one) up to pixel column A.
 .pad_to
 {
@@ -76,8 +131,11 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     RTS
 }
 
+MACRO PRINT6 text
+    JSR print6 : PACKED text
+ENDMACRO
 MACRO PRINT_XY colour, x, y, text
-    JSR print_at : EQUB colour, x, y : EQUS text, 0
+    JSR print_at : EQUB colour, x, y : PACKED text
 ENDMACRO
 MACRO PRINT_AT colour, col, line, text
     PRINT_XY colour, col * 4, line * 7, text
@@ -211,10 +269,10 @@ ENDMACRO
     LDX i : CPX num_players : BCS blank
     LDA tank_colour,X : JSR ink
     LDX i : JSR print_name
-    JSR print_inline : EQUS "  ", 0
+    PRINT6 "  "
     JMP pnext
 .blank
-    JSR print_inline : EQUS "           ", 0
+    PRINT6 "           "
 .pnext
     INC i : LDA i : CMP #MAXP : BNE player
     \ the marker
@@ -293,7 +351,7 @@ ENDMACRO
     LDX cur : LDA tank_colour,X : JSR ink
     LDA #1 : LDX #1 : JSR at
     LDX cur : JSR print_name
-    JSR print_inline : EQUS " GOES SHOPPING", 0
+    PRINT6 " GOES SHOPPING"
     PRINT_AT C_CYAN, 1, 3, "ITEM             QTY  PRICE OWNED"
     PRINT_AT C_CYAN, 5, 26, "RETURN BUYS   SPACE TO FIGHT"
 .redraw
@@ -407,16 +465,16 @@ ENDMACRO
     JSR cls
     PRINT_AT C_WHITE, 13, 3, "ROUND "
     LDA round_no : LDX #2 : JSR print_byte
-    JSR print_inline : EQUS " OF ", 0
+    PRINT6 " OF "
     LDA num_rounds : LDX #2 : JSR print_byte
     LDA #12 : LDX #6 : JSR at
     LDX winner : BMI nobody
     LDA tank_colour,X : JSR ink
     LDX winner : JSR print_name
-    JSR print_inline : EQUS " WINS", 0
+    PRINT6 " WINS"
     JMP table
 .nobody
-    JSR print_inline : EQUS "NOBODY WINS", 0
+    PRINT6 "NOBODY WINS"
 .table
     PRINT_AT C_CYAN, 6, 10, "PLAYER       SCORE    MONEY"
     LDA #0 : STA i
@@ -476,7 +534,7 @@ ENDMACRO
     LDX best : LDA tank_colour,X : JSR ink
     LDA #9 : LDX #12 : JSR at
     LDX best : JSR print_name
-    JSR print_inline : EQUS " IS CHAMPION", 0
+    PRINT6 " IS CHAMPION"
     JSR snd_fanfare
     PRINT_AT C_WHITE, 10, 28, "SPACE TO PLAY AGAIN"
 .wait
