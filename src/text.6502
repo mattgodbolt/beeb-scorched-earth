@@ -17,38 +17,30 @@ ENDMACRO
 
 ZA_AUTO1 text_x, text_y     ; pixel position of the next character (x even)
 
-\ Choose text colours: A = foreground, X = background (logical colours).
-\ Builds the four two-pixel patterns a glyph row is made of. Every caller
-\ so far wants black paper, hence the shorter entry points.
+\ Choose the text colour: A = a logical colour. The paper is always
+\ black, so a glyph's pixels are just ink_byte under a mask.
+ZA_AUTO1 ink_byte
 .white
     LDA #C_WHITE
 .ink
-    LDX #C_BLACK
-.set_colours
-{
-    ZA_AUTO1 diff
-    \ pattern = paper EOR ((ink EOR paper) AND mask): ink under the mask
-    TAY : LDA cbytes,Y : EOR cbytes,X : STA diff
-    LDY #3
-.loop
-    LDA diff : AND masks,Y : EOR cbytes,X : STA pattern,Y
-    DEY : BPL loop
+    TAX : LDA cbytes,X : STA ink_byte
     RTS
-.masks EQUB 0, RIGHTPIX, LEFTPIX, &FF       ; .. .# #. ##
-}
-.pattern EQUB 0, 0, 0, 0
 
 \ Draw character A at (text_x, text_y) and move text_x on a cell. Returns
 \ A = text_x (menu.6502's "JSR draw_char : JSR draw_char" relies on that
-\ being >= 96, so the second call draws a space).
+\ being >= 96, past Z, so the second call draws a space), never zero, and
+\ with carry clear: menu.6502 relies on both. Preserves Y, which the two
+\ loops below that print with it index by.
 .draw_char
 {
     ZA_AUTO2 bits
-    ZA_AUTO1 row, y
-    SEC : SBC #32 : CMP #64 : BCC @+ : LDA #0 : .@   ; anything else is a space
+    ZA_AUTO1 row, y, ysave
+    STY ysave
+    \ Nothing passes a control code; anything past the font is a space.
+    CMP #32 + (font_end - font) DIV 2 : BCC @+ : LDA #32 : .@
     ASL A : TAX
-    LDA font,X : STA bits
-    LDA font+1,X : STA bits+1
+    LDA font-64,X : STA bits                    ; (the font starts at 32)
+    LDA font-63,X : STA bits+1
     LDA #6 : STA row
     LDA text_y : STA y
 .rowloop
@@ -57,15 +49,17 @@ ZA_AUTO1 text_x, text_y     ; pixel position of the next character (x even)
     LDA #0
     ASL bits : ROL bits+1 : ROL A
     ASL bits : ROL bits+1 : ROL A
-    TAX : LDA pattern,X
+    TAX : LDA pixmasks,X : AND ink_byte
     LDY #0 : STA (scr),Y
-    LDA #0
-    ASL bits : ROL bits+1 : ROL A
-    ASL A : TAX : LDA pattern,X
+    ASL bits : ROL bits+1
+    LDA #0 : BCC @+ : LDA #LEFTPIX : .@
+    AND ink_byte
     LDY #8 : STA (scr),Y
     INC y
     DEC row : BNE rowloop
-    LDA text_x : CLC : ADC #4 : STA text_x
+    LDY ysave
+    \ (carry is clear: the last bits shifted out of bits were padding)
+    LDA text_x : ADC #4 : STA text_x
     RTS
 }
 
@@ -78,10 +72,9 @@ ZA_AUTO2 str_ptr
 \ Print from (str_ptr),Y to the terminator; returns Y = its index.
 .print_from
 {
-    ZA_AUTO1 y
 .next
     LDA (str_ptr),Y : BEQ done
-    STY y : JSR draw_char : LDY y
+    JSR draw_char
     INY : BNE next
 .done
     RTS
@@ -100,37 +93,37 @@ ZA_AUTO 3, num
 \ with spaces (A = 1..8).
 .print_num
 {
-    ZA_AUTO1 width, digit, started, mid, xsave
+    ZA_AUTO1 width, started, lo, mid
     STA width
     LDA #0 : STA started
-    LDX #7                      ; power-of-ten index, 10^7 .. 10^0
+    LDY #7                      ; power-of-ten index, 10^7 .. 10^0
 .place
-    LDA #0 : STA digit
+    LDX #0                      ; the digit
 .sub
-    LDA num : SEC : SBC pow_lo,X : TAY
-    LDA num+1 : SBC pow_mid,X : STA mid
-    LDA num+2 : SBC pow_hi,X : BCC enough
-    STA num+2 : LDA mid : STA num+1 : STY num
-    INC digit : BCS sub         ; (always: carry is still set)
+    LDA num : SEC : SBC pow_lo,Y : STA lo
+    LDA num+1 : SBC pow_mid,Y : STA mid
+    LDA num+2 : SBC pow_hi,Y : BCC enough
+    STA num+2 : LDA mid : STA num+1 : LDA lo : STA num
+    INX : BCS sub               ; (always: carry is still set)
 .enough
-    LDA digit : ORA started : STA started
+    TXA : ORA started : STA started
     BNE show
-    TXA : BEQ show              ; the units digit always shows
-    CPX width : BCS skip        ; leading zeroes outside the field: nothing
+    TYA : BEQ show              ; the units digit always shows
+    CPY width : BCS skip        ; leading zeroes outside the field: nothing
     LDA #32 : BNE out           ; inside it: a space
 .show
-    LDA digit : ORA #48
+    TXA : ORA #48
 .out
-    STX xsave : JSR draw_char : LDX xsave
+    JSR draw_char
 .skip
-    DEX : BPL place
+    DEY : BPL place
     RTS
 .pow_lo  EQUB LO({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
 .pow_mid EQUB HI({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
 .pow_hi  EQUB ({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000} >> 16) AND 255
 }
 
-\ Glyphs for ASCII 32-95.
+\ Glyphs for ASCII 32-90, space to Z.
 .font
     GLYPH "...", "...", "...", "...", "..."     ; space
     GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; !
@@ -191,8 +184,6 @@ ZA_AUTO 3, num
     GLYPH "#.#", "#.#", ".#.", "#.#", "#.#"     ; X
     GLYPH "#.#", "#.#", ".#.", ".#.", ".#."     ; Y
     GLYPH "###", "..#", ".#.", "#..", "###"     ; Z
-    GLYPH "##.", "#..", "#..", "#..", "##."     ; [
-    GLYPH "#..", "#..", ".#.", "..#", "..#"     ; \
-    GLYPH ".##", "..#", "..#", "..#", ".##"     ; ]
-    GLYPH ".#.", "#.#", "...", "...", "..."     ; ^
-    GLYPH "...", "...", "...", "...", "###"     ; _
+    \ No text uses [ \ ] ^ or _ (the packed-text terminator), so they are
+    \ left out: draw_char shows them as spaces.
+.font_end

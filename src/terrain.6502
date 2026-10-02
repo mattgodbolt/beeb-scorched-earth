@@ -29,40 +29,43 @@ ZA_AUTO2 seed
 ZA_AUTO1 terrain_amp
 .gen_terrain
 {
-    ZA_AUTO1 step, half, amp, i, mid, sum
+    ZA_AUTO1 step, half, amp, hamp, mid, sum
     \ Anchors.
     LDX #0
 .anchor
     JSR rand : AND #127 : CLC : ADC #MIN_GROUND+30
     STA ground,X
-    TXA : CLC : ADC #32 : TAX
+    TXA : ADC #32 : TAX                         ; (no carry: the sum was < 256)
     CPX #SCREEN_W+32 : BNE anchor
+    LDA terrain_amp : STA amp : LSR A : STA hamp    ; hamp = amp / 2
     LDA #32 : STA step
-    LDA terrain_amp : STA amp
+    LSR A
 .level
-    LDA step : LSR A : STA half
-    STA i
+    STA half                                    ; step / 2
+    TAY                                         ; i, the first point
 .point
-    \ ground[i] = mean of the neighbours half a step away, plus a bump
-    LDA i : SEC : SBC half : TAX
+    \ ground[i] = mean of the neighbours half a step away, plus a bump.
+    \ i stays in Y (rand leaves it alone). Carry is clear here: every way
+    \ in has just shifted an even number right or failed a CMP.
+    TYA : ADC half : TAX
     LDA ground,X : STA sum
-    LDA i : CLC : ADC half : TAX
+    TXA : SEC : SBC step : TAX
     LDA ground,X : CLC : ADC sum : ROR A : STA mid
-    JSR rand : AND amp : STA sum
-    LDA amp : LSR A : EOR #&FF : SEC : ADC sum  ; bump in -amp/2 .. +amp/2
+    JSR rand : AND amp : SEC : SBC hamp         ; bump in -amp/2 .. +amp/2
     \ No sum can wrap: mid is 64-221 (anchors reach MIN_GROUND+30+127)
     \ and the bump at most 32 either way.
     BMI down
     CLC : ADC mid : CMP #MAX_GROUND : BCC store
-    LDA #MAX_GROUND : BNE store
-.down
-    CLC : ADC mid : CMP #MIN_GROUND : BCS store
+    LDA #MAX_GROUND
+    BITABS                                      ; skip the ADC: MAX_GROUND
+.down                                           ; passes the CMP and stores
+    ADC mid : CMP #MIN_GROUND : BCS store       ; (no carry: the SBC borrowed)
     LDA #MIN_GROUND
 .store
-    LDX i : STA ground,X
-    LDA i : CLC : ADC step : STA i
+    STA ground,Y
+    TYA : CLC : ADC step : TAY
     CMP #SCREEN_W+1 : BCC point
-    LSR amp
+    LSR amp : LSR hamp
     LSR step
     LDA step : LSR A : BNE level                ; until step is 1
     RTS
@@ -77,20 +80,20 @@ ZA_AUTO1 terrain_amp
 {
     ZA_AUTO1 shaded, stripe, t
     JSR rand : AND #3 : TAX : LDA stripes,X : STA stripe
-    JSR rand : AND #1 : STA shaded
+    JSR rand : LSR A : ROR shaded               ; bit 7: shaded
     LDX #0
 .row
     LDA #0
-    LDY shaded : BEQ sky
+    BIT shaded : BPL sky
     TXA : LSR A : LSR A : LSR A : LSR A : AND #&0C : STA t   ; (y >> 6) * 4
     TXA : AND #3 : ORA t : TAY : LDA sky_dither,Y
 .sky
     STA skyrow,X
     TXA : AND #7 : BNE green
-    LDA stripe : BNE store
+    LDA stripe
+    BITABS                                      ; skip the green
 .green
     LDA #cbyte(C_GREEN)
-.store
     STA dirtrow,X
     INX : BNE row
     RTS
@@ -101,14 +104,4 @@ ZA_AUTO1 terrain_amp
     EQUB lpix(C_BLUE), 0, 0, 0
     EQUB lpix(C_BLUE), 0, lpix(C_BLUE) DIV 2, 0
     EQUB lpix(C_BLUE), lpix(C_BLUE) DIV 2, lpix(C_BLUE), lpix(C_BLUE) DIV 2
-}
-
-\ Draw the whole playfield from the model.
-.draw_terrain
-{
-    LDA #TOP : STA bg_y0
-    LDA #FLOOR : STA bg_y1
-    LDA #0 : STA rect_x0
-    LDA #SCREEN_W-1 : STA rect_x1
-    JMP repaint
 }
