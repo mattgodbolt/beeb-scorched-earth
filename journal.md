@@ -269,3 +269,40 @@ side is lower.
   so all 26 items fit; `ASSERT NITEMS <= 29` guards it.
 - `tools/shop.mjs` is now deterministic: on the human's turn it takes the
   computer's tank off the board and fires, which ends the round.
+
+## Second pass: 1769 -> 2571 bytes free, nothing given up
+
+Five agents again, four on disjoint files and one on data placement only.
+The gate this time was strict: every commit had to reproduce
+`tools/regress.baseline.txt` exactly. Several agents added their own
+pinned-seed checks on top (whole 4-computer games hashed every turn,
+every weapon including napalm run to completion, explosion timing traced
+frame by frame) and all merged without a conflict.
+
+- **Zero page (+116)**, only `memory.6502` and the pool line touched: the
+  allocator reached &4F, so the nine busiest per-player arrays moved to a
+  fixed block at &5A-&8F. Every `abs`/`abs,X` access to them became `zp`/
+  `zp,X`. The arrays were ranked by accesses in the listing; `tank_money`
+  and `inv` pay well but need too many bytes.
+- **Explosions/game (+245)**: spans can't be more than MAX_R/2 from an
+  on-screen centre, so an end off the left wraps to >= SCREEN_W and one
+  compare finds both edges; the round loop finds the winner while it
+  counts survivors.
+- **Menus/AI/sound (+194)**: one add loop for both paying and being paid
+  (paying adds the complement with carry set); sound routines fall into
+  `snd_play` through a BITABS chain.
+- **Weapons/physics (+163)**: `land` dispatches through an RTS table;
+  `pour` takes fire-or-dirt in carry.
+- **Graphics/text (+91)**: paper is always black, so `set_colours` and
+  its pattern table went; `repaint` builds a 2-bit "which pixels are
+  dirt" index into one shared mask table; terrain generation was checked
+  byte-identical over 300 seeds.
+
+Cross-agent contracts are now commented where they're relied on:
+`draw_char` returns A = text_x (never 0) with carry clear and preserves
+Y; `print6` exits with Z and C set. These are the fragile edges of
+squeezed code: a future change to one of them needs a grep for its users.
+
+One agent's `pkill -f regress.mjs` killed the others' regression runs in
+their worktrees; they re-ran. Lesson for parallel agents: never kill by
+name.
