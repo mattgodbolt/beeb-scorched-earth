@@ -2,6 +2,11 @@
 \ System: screen mode, vsync counting, keyboard.
 \ ***************************************************************************
 
+\ In zero page, for the shorter instructions. ZA_INTERRUPT gives the bytes
+\ the handler shares with the rest of the program addresses of their own.
+ZA_AUTO2 old_irq            ; the OS's IRQ1V handler (boot saves it)
+ZA_AUTO1 ff                ; bit 7 set: don't wait for anything
+
 \ The OS has already saved A at &FC; X and Y must be left alone. The
 \ System VIA's CA1 flag is vsync.
 .our_irq
@@ -13,10 +18,11 @@
     JMP (old_irq)
     ZA_CANJUMP &E000           ; the OS handler
 }
-.old_irq  EQUW 0
-.vsyncs   EQUB 0
+\ (Not in zero page: the game seeds from it, so it must start at 0, and
+\ only the load clears it.)
+.vsyncs EQUB 0
 
-\ Wait for the next vsync.
+\ Wait for the next vsync. (Nothing waits before a round has set ff.)
 .wait_vsync
 {
     BIT ff : BMI done                           ; fast-forwarding
@@ -26,25 +32,24 @@
 .done
     RTS
 }
-.ff EQUB 0                  ; bit 7 set: don't wait for anything
 
-\ Wait A frames.
+\ Wait A frames. Returns X = 0.
 .wait_frames
 {
-    ZA_AUTO1 n
-    STA n
+    TAX
 .loop
     JSR wait_vsync
-    DEC n : BNE loop
+    DEX : BNE loop
     RTS
 }
 
 \ Is a key down? X = internal key number EOR &FF (i.e. the negative INKEY
-\ value). Returns with Z clear (BNE) if it is.
+\ value). Returns with Z clear (BNE) if it is: OSBYTE 129 returns X = &FF
+\ for a key that is down and 0 for one that isn't.
 .key_down
 {
     LDA #129 : LDY #&FF : JSR osbyte
-    CPX #0
+    TXA
     RTS
 }
 
