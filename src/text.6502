@@ -28,11 +28,14 @@ ZA_AUTO1 ink_byte
 
 \ Draw character A at (text_x, text_y) and move text_x on a cell. Returns
 \ A = text_x (menu.6502's "JSR draw_char : JSR draw_char" relies on that
-\ being >= 96, past Z, so the second call draws a space).
+\ being >= 96, past Z, so the second call draws a space), never zero, and
+\ with carry clear: menu.6502 relies on both. Preserves Y, which the two
+\ loops below that print with it index by.
 .draw_char
 {
     ZA_AUTO2 bits
-    ZA_AUTO1 row, y
+    ZA_AUTO1 row, y, ysave
+    STY ysave
     \ Nothing passes a control code; anything past the font is a space.
     CMP #32 + (font_end - font) DIV 2 : BCC @+ : LDA #32 : .@
     ASL A : TAX
@@ -54,6 +57,7 @@ ZA_AUTO1 ink_byte
     LDY #8 : STA (scr),Y
     INC y
     DEC row : BNE rowloop
+    LDY ysave
     \ (carry is clear: the last bits shifted out of bits were padding)
     LDA text_x : ADC #4 : STA text_x
     RTS
@@ -68,10 +72,9 @@ ZA_AUTO2 str_ptr
 \ Print from (str_ptr),Y to the terminator; returns Y = its index.
 .print_from
 {
-    ZA_AUTO1 y
 .next
     LDA (str_ptr),Y : BEQ done
-    STY y : JSR draw_char : LDY y
+    JSR draw_char
     INY : BNE next
 .done
     RTS
@@ -90,7 +93,7 @@ ZA_AUTO 3, num
 \ with spaces (A = 1..8).
 .print_num
 {
-    ZA_AUTO1 width, started, lo, mid, ysave
+    ZA_AUTO1 width, started, lo, mid
     STA width
     LDA #0 : STA started
     LDY #7                      ; power-of-ten index, 10^7 .. 10^0
@@ -111,7 +114,7 @@ ZA_AUTO 3, num
 .show
     TXA : ORA #48
 .out
-    STY ysave : JSR draw_char : LDY ysave
+    JSR draw_char
 .skip
     DEY : BPL place
     RTS

@@ -57,7 +57,7 @@ ZA_AUTO1 span_x0, span_x1
 .whole
     CPX span_x1 : BCS tail                      ; fewer than two pixels left
     LDA fill : STA (scr),Y
-    TYA : CLC : ADC #8 : TAY
+    TYA : ADC #8 : TAY                          ; (the CPX left carry clear)
     BCC @+ : INC scr+1 : .@
     INX : INX : BNE whole                       ; (always: X <= 160)
 .tail
@@ -145,9 +145,8 @@ ZA_AUTO1 disc_r, disc_cx, disc_cy
     LDY disc_r
     LDX #0
 .col
-    TXA
 .down
-    CMP profile,Y : BEQ ok : BCC ok
+    TXA : CLC : SBC profile,Y : BCC ok          ; borrows if dx <= profile[dy]
     DEY : BPL down                              ; (always: profile[0] >= dx)
 .ok
     TYA : STA colspan,X

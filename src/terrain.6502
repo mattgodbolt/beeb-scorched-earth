@@ -29,7 +29,7 @@ ZA_AUTO2 seed
 ZA_AUTO1 terrain_amp
 .gen_terrain
 {
-    ZA_AUTO1 step, half, amp, hamp, i, mid, sum
+    ZA_AUTO1 step, half, amp, hamp, mid, sum
     \ Anchors.
     LDX #0
 .anchor
@@ -42,12 +42,12 @@ ZA_AUTO1 terrain_amp
     LSR A
 .level
     STA half                                    ; step / 2
-    STA i
+    TAY                                         ; i, the first point
 .point
     \ ground[i] = mean of the neighbours half a step away, plus a bump.
-    \ (Carry is clear here: every way in has just shifted an even number
-    \ right or failed a CMP.)
-    LDA i : ADC half : TAX
+    \ i stays in Y (rand leaves it alone). Carry is clear here: every way
+    \ in has just shifted an even number right or failed a CMP.
+    TYA : ADC half : TAX
     LDA ground,X : STA sum
     TXA : SEC : SBC step : TAX
     LDA ground,X : CLC : ADC sum : ROR A : STA mid
@@ -62,8 +62,8 @@ ZA_AUTO1 terrain_amp
     ADC mid : CMP #MIN_GROUND : BCS store       ; (no carry: the SBC borrowed)
     LDA #MIN_GROUND
 .store
-    LDX i : STA ground,X
-    TXA : CLC : ADC step : STA i
+    STA ground,Y
+    TYA : CLC : ADC step : TAY
     CMP #SCREEN_W+1 : BCC point
     LSR amp : LSR hamp
     LSR step
