@@ -51,13 +51,12 @@ MAX_WIND = 20
 .turn
     LDX cur : LDA tank_alive,X : BEQ next
     STX attacker
-    LDA tank_type,X : BEQ human
-    JSR ai_turn
-    JMP shoot
-.human
+    LDA tank_type,X : BNE computer
     JSR aim
     BCC shoot
     JMP game
+.computer
+    JSR ai_turn
 .shoot
     JSR fire
     JSR spectators
@@ -369,8 +368,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     JSR spawn_shell
     JSR snd_fire
     JSR fly_shells
-    JSR kill_dead
-    RTS
+    JMP kill_dead
 }
 
 \ Tanks whose health has run out blow up - which may finish off others.
@@ -514,7 +512,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     LDX wall_type : LDA wall_colours,X : JSR ink
     LDA #4*32 : STA text_x
     LDA wall_type
-    LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_nth
+    LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_packed_nth
 .wind_num
     \ wind is shown x10, as the original's 0-200 scale
     LDX #10 : JSR times
@@ -523,8 +521,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 
 .draw_power
 {
-    JSR white
-    LDA #4*6 : STA text_x : LDA #2 : STA text_y
+    LDA #4*6 : LDY #2 : JSR white_at
     LDX cur
     LDA tank_power_lo,X : STA num
     LDA tank_power_hi,X : STA num+1
@@ -533,15 +530,14 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 }
 
 .wall_names
-    EQUS "    OPEN", 0, "    WRAP", 0, "  RUBBER", 0, "CONCRETE", 0
+    PACKED "    OPEN" : PACKED "    WRAP" : PACKED "  RUBBER" : PACKED "CONCRETE"
 .wall_colours
     EQUB C_WHITE, C_YELLOW, C_RED, C_WHITE
 
 \ The selected weapon and how many are left.
 .draw_weapon
 {
-    JSR white
-    LDA #0 : STA text_x : LDA #9 : STA text_y
+    LDA #0 : LDY #9 : JSR white_at
     LDX cur : LDA tank_weapon,X : JSR print_item_name
     LDA #4*16 : JSR pad_to
     LDX cur : LDA tank_weapon,X : BEQ lots
@@ -555,14 +551,18 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 \ arrow for the side it faces.
 .draw_angle
 {
-    JSR white
-    LDA #4*18 : STA text_x : LDA #2 : STA text_y
+    LDA #4*18 : LDY #2 : JSR white_at
     LDX cur : LDA tank_angle,X
-    CMP #91 : BCS left
-    LDX #3 : JSR print_byte
-    LDA #62 : JMP draw_char           ; >
-.left
+    LDY #62                                     ; >
+    CMP #91 : BCC @+
     EOR #&FF : SEC : ADC #180
+    LDY #60                                     ; <
+.@  TAX : TYA : PHA : TXA                       ; the arrow, for after
     LDX #3 : JSR print_byte
-    LDA #60 : JMP draw_char           ; <
+    PLA : JMP draw_char
 }
+
+\ White text from (A, Y) in pixels.
+.white_at
+    STA text_x : STY text_y
+    JMP white

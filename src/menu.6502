@@ -95,6 +95,25 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
     RTS
 }
 
+\ Point tptr at packed string A of the list at (X lo, Y hi), unpacking its
+\ way past the ones before it. Leaves X = &FF.
+.packed_nth
+{
+    STX tptr : STY tptr+1
+    TAX
+.skip
+    LDA #&80 : STA tbits                        ; each string starts a byte
+    DEX : BMI found
+.@  JSR unpack : BNE @-
+    BEQ skip
+.found
+    RTS
+}
+
+\ Print packed string A of the list at (X, Y).
+.print_packed_nth
+    JSR packed_nth : JMP print_packed
+
 \ Print packed text given inline after the JSR, as print_inline does:
 \     JSR print6 : PACKED "TEXT"
 \ or put it somewhere in some colour first:
@@ -148,12 +167,13 @@ ENDMACRO
     STX t
     LDA tank_type,X
     LDX #LO(type_names) : LDY #HI(type_names)
-    JSR print_nth
+    JSR print_packed_nth
     LDA #32 : JSR draw_char
     LDA t : CLC : ADC #49 : JMP draw_char
 }
 .type_names
-    EQUS "PLAYER", 0, "MORON", 0, "SHOOTER", 0, "TOSSER", 0, "SPOILER", 0, "CYBORG", 0
+    PACKED "PLAYER" : PACKED "MORON" : PACKED "SHOOTER"
+    PACKED "TOSSER" : PACKED "SPOILER" : PACKED "CYBORG"
 
 \ Where each player's money starts in tank_money: three bytes apiece.
 .times3
@@ -269,11 +289,9 @@ ENDMACRO
     LDX i : CPX num_players : BCS blank
     LDA tank_colour,X : JSR ink
     LDX i : JSR print_name
-    PRINT6 "  "
-    JMP pnext
 .blank
-    PRINT6 "           "
-.pnext
+    \ spaces rub out a longer name, or a player no longer in the game
+    LDA #4*18 : JSR pad_to
     INC i : LDA i : CMP #MAXP : BNE player
     \ the marker
     JSR white
@@ -290,10 +308,11 @@ ENDMACRO
     CMP #32 : BEQ go
     CMP #KEY_RET : BEQ go
     LDX menu_sel
-    CMP #KEY_UP : BNE @+ : DEX : BMI key : STX menu_sel : JMP redraw : .@
+    CMP #KEY_UP : BNE @+ : DEX : BMI key : BPL select : .@
     CMP #KEY_DOWN : BNE @+
     LDA num_players : CLC : ADC #2 : STA i      ; items: 2 settings + players
     INX : CPX i : BCS key
+.select
     STX menu_sel : JMP redraw : .@
     CMP #KEY_LEFT : BEQ change
     CMP #KEY_RIGHT : BNE key
@@ -306,17 +325,18 @@ ENDMACRO
     CPX #0 : BNE rounds
     LDA num_players : CLC : ADC i
     CMP #2 : BCC key : CMP #MAXP+1 : BCS key
-    STA num_players : JMP redraw
+    STA num_players : BCC again                 ; (always)
 .rounds
     CPX #1 : BNE type
     LDA num_rounds : CLC : ADC i
     BEQ key : CMP #100 : BCS key
-    STA num_rounds : JMP redraw
+    STA num_rounds : BCC again                  ; (always)
 .type
     LDA tank_type-2,X : CLC : ADC i
     BPL @+ : LDA #NTYPES-1 : .@
     CMP #NTYPES : BCC @+ : LDA #0 : .@
     STA tank_type-2,X
+.again
     JMP redraw
 .go
     RTS
@@ -359,7 +379,6 @@ ENDMACRO
 .all
     LDA i : JSR shop_line
     INC i : LDA i : CMP #NITEMS : BNE all
-.money
     JSR white
     LDA #31 : LDX #1 : JSR at
     LDX cur : JSR print_money
@@ -369,7 +388,7 @@ ENDMACRO
     LDX menu_sel
     CMP #KEY_UP : BNE notup
     CPX #1 : BEQ key
-    DEC menu_sel : JMP moved
+    DEC menu_sel : BPL moved                    ; (always: it was 2 or more)
 .notup
     CMP #KEY_DOWN : BNE notdown
     CPX #NITEMS-1 : BEQ key
@@ -488,9 +507,7 @@ ENDMACRO
     LDX i : JSR print_money
     INC i : LDA i : CMP num_players : BNE row
     PRINT_AT C_WHITE, 11, 28, "SPACE TO GO ON"
-.wait
-    JSR get_key : CMP #32 : BNE wait
-    RTS
+    JMP wait_space
 }
 
 \ Everyone's money earns interest between rounds - m/16 - m/64, about 5%
@@ -537,7 +554,9 @@ ENDMACRO
     PRINT6 " IS CHAMPION"
     JSR snd_fanfare
     PRINT_AT C_WHITE, 10, 28, "SPACE TO PLAY AGAIN"
-.wait
-    JSR get_key : CMP #32 : BNE wait
-    RTS
+    \ (on into wait_space)
 }
+\ Wait for SPACE.
+.wait_space
+    JSR get_key : CMP #32 : BNE wait_space
+    RTS

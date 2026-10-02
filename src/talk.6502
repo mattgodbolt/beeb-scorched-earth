@@ -35,7 +35,7 @@ DEATH_LINES  = 10
     \ how wide is it?
     JSR seek
 .count
-    INX : JSR unpack : BNE count                ; (seek left X = -1)
+    INX : JSR unpack : BNE count                ; (from X = &FF)
     TXA : ASL A : ASL A : STA len               ; pixels
     \ centred over the tank, kept on the screen
     LSR A : STA x0
@@ -56,15 +56,6 @@ DEATH_LINES  = 10
     JSR repaint
     JMP draw_tanks
 
-\ Point tptr at the start of the line, skipping the ones before it.
 .seek
-    LDA #LO(talk) : STA tptr : LDA #HI(talk) : STA tptr+1
-    LDX line
-.skip
-    LDA #&80 : STA tbits                        ; each line starts a byte
-    DEX : BMI found
-.@  JSR unpack : BNE @-
-    BEQ skip
-.found
-    RTS
+    LDA line : LDX #LO(talk) : LDY #HI(talk) : JMP packed_nth
 }
