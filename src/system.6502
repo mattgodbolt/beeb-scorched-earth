@@ -6,6 +6,9 @@
 \ the handler shares with the rest of the program addresses of their own.
 ZA_AUTO2 old_irq            ; the OS's IRQ1V handler (boot saves it)
 ZA_AUTO1 ff                ; bit 7 set: don't wait for anything
+\ Frames since start-up. The game seeds from it, so init_system zeroes it
+\ before hooking the IRQ: zero page arrives holding the DFS's leftovers.
+ZA_AUTO1 vsyncs
 
 \ The OS has already saved A at &FC; X and Y must be left alone. The
 \ System VIA's CA1 flag is vsync.
@@ -18,9 +21,6 @@ ZA_AUTO1 ff                ; bit 7 set: don't wait for anything
     JMP (old_irq)
     ZA_CANJUMP &E000           ; the OS handler
 }
-\ (Not in zero page: the game seeds from it, so it must start at 0, and
-\ only the load clears it.)
-.vsyncs EQUB 0
 
 \ Wait for the next vsync. (Nothing waits before a round has set ff.)
 .wait_vsync

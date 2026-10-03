@@ -37,6 +37,7 @@ ENDSECTION
 SECTION Printer, org = &0880, guard = &08C0
 .tank_shield    SKIP MAXP       ; shield strength left, 0 = none
 .tank_mag       SKIP MAXP       ; nonzero: the shield is a mag
+.printer_end
 ENDSECTION
 
 \ BASIC's workspace: four page-sized tables, indexed by screen row.
@@ -50,8 +51,6 @@ ENDSECTION
 \ The tape and RS423 buffers, soft keys and user-defined characters.
 SECTION Tables, org = &0900, guard = &0D00
 .ground         SKIP SCREEN_W+1 ; first dirt row of column x
-.coloff_lo      SKIP SCREEN_W   ; (x >> 1) * 8, indexed by x
-.coloff_hi      SKIP SCREEN_W
 .profile        SKIP MAX_R+1    ; half-widths of the current disc, by |dy|
 .profile_prev   SKIP MAX_R+1    ; the previous ring's, while a blast grows
 .colspan        SKIP MAX_R/2+2  ; half-heights of the current disc, by |dx|
@@ -63,6 +62,7 @@ SECTION Tables, org = &0900, guard = &0D00
 .tank_tries     SKIP MAXP       ; shots a tosser has had
 .tank_money     SKIP MAXP*3     ; 24-bit, low bytes first, by player
 .tank_score     SKIP MAXP
+.inv            SKIP MAXP * NITEMS  ; inv[inv_base[p] + item] (weapons.6502)
 .tables_end
 ENDSECTION
 
@@ -76,12 +76,11 @@ SECTION Nmi, org = &0D01, guard = &0E00
 .nmi_end
 ENDSECTION
 
-\ The inventory, inv[inv_base[p] + item], is in the code (weapons.6502):
-\ no hole down here is big enough for it any more.
-
-\ Four more holes are filled with constant tables, carried in the SCORCH
+\ Five more holes are filled with constant tables, carried in the SCORCH
 \ file and copied into place once at start-up (lowdata.6502, boot.6502):
 \   &0100-stack_low_guard  the bottom of the stack page
+\   printer_end-&08BF  the rest of the printer buffer: nothing is ever
+\                  printed, and &08C0 up holds the four envelopes
 \   &0380-&03DF  the cassette filing system's workspace; no tape is ever used
 \   tables_end-&0CFF  the rest of the user-defined characters
 \   nmi_end-&0DEF  the rest of the extended vectors, which only ROMs use;
