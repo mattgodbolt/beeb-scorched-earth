@@ -97,8 +97,7 @@ ZA_AUTO1 terrain_amp
     STA dirtrow,X
     INX : BNE row
     RTS
-.stripes
-    EQUB cbyte(C_YELLOW), cbyte(C_CYAN), cbyte(C_WHITE), cbyte(C_BLUE)
+    \ (stripes is in lowdata.6502.)
 .sky_dither
     EQUB 0, 0, 0, 0
     EQUB lpix(C_BLUE), 0, 0, 0

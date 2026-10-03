@@ -3,10 +3,13 @@
 \ main.6502 carries each section inside the SCORCH file and boot.6502 copies
 \ it into place, so none of them costs a byte of code space. Only data read
 \ by address belongs here: nothing in these sections is ever written.
+\ Boot copies each section from its low_*_start label, so tables can move
+\ between holes freely.
 \ ***************************************************************************
 
 .low_tape_payload
 SECTION LowTape, org = &0380, guard = &03E0
+.low_tape_start
 \ sin(d) * 255 for d = 0..90 degrees.
 .sintab
     EQUB ROUND(SIN((0..90) * PI / 180) * 255)
@@ -15,21 +18,35 @@ ENDSECTION
 
 .low_stack_payload
 SECTION LowStack, org = &0100, guard = stack_low_guard
+.low_stack_start
 .item_price_lo  EQUB LO(ITEMS[.., 4])
 .item_price_hi  EQUB HI(ITEMS[.., 4])
 .item_bundle    EQUB ITEMS[.., 5]
+.item_power     EQUB ITEMS[.., 3]
+\ A byte's pixel bits, indexed by (left pixel) * 2 + (right pixel).
+.pixmasks       EQUB 0, RIGHTPIX, LEFTPIX, &FF
 .low_stack_end
+ENDSECTION
+
+.low_printer_payload
+SECTION LowPrinter, org = printer_end, guard = &08C0
+.low_printer_start
+.item_radius    EQUB ITEMS[.., 2]
+.low_printer_end
 ENDSECTION
 
 .low_udg_payload
 SECTION LowUdg, org = tables_end, guard = &0D00
-.item_radius    EQUB ITEMS[.., 2]
-.item_power     EQUB ITEMS[.., 3]
+.low_udg_start
+\ Dirt stripe colours, one picked a round (make_colours).
+.stripes
+    EQUB cbyte(C_YELLOW), cbyte(C_CYAN), cbyte(C_WHITE), cbyte(C_BLUE)
 .low_udg_end
 ENDSECTION
 
 .low_nmi_payload
 SECTION LowNmi, org = nmi_end, guard = &0DF0
+.low_nmi_start
 .item_kind      EQUB ITEMS[.., 1]
 .low_nmi_end
 ENDSECTION

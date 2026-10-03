@@ -121,8 +121,7 @@ ZA_AUTO1 rect_x0, rect_x1
     RTS
 }
 
-\ A byte's pixel bits, indexed by (left pixel) * 2 + (right pixel).
-.pixmasks EQUB 0, RIGHTPIX, LEFTPIX, &FF
+\ (pixmasks is in lowdata.6502.)
 
 \ ---------------------------------------------------------------------------
 \ Discs. Everything round in the game is built from `profile`, the

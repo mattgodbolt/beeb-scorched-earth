@@ -37,6 +37,7 @@ ENDSECTION
 SECTION Printer, org = &0880, guard = &08C0
 .tank_shield    SKIP MAXP       ; shield strength left, 0 = none
 .tank_mag       SKIP MAXP       ; nonzero: the shield is a mag
+.printer_end
 ENDSECTION
 
 \ BASIC's workspace: four page-sized tables, indexed by screen row.
