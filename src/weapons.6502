@@ -155,11 +155,10 @@ NEXT
     INY : TYA
     CPY #NWEAPONS : BCS wrap
     JSR inv_index : LDA inv,X : BEQ try
-    TYA
-    BITABS                                      ; (skip the LDA #0)
+    BITABS                                      ; (skip the LDY #0)
 .wrap
-    LDA #0
-    LDX cur : STA tank_weapon,X
+    LDY #0
+    LDX cur : STY tank_weapon,X                 ; (zero page: STY zp,X)
     RTS
 }
 
@@ -191,7 +190,7 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     JSR shell_offset
 .copy
     LDA shells,Y : STA shell,X : ZA_INDEXEDBY 0..15
-    INY : INX : CPX #16 : BNE copy
+    DEY : DEX : BPL copy
     RTS
 }
 
@@ -201,15 +200,16 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     JSR shell_offset
 .copy
     LDA shell,X : ZA_INDEXEDBY 0..15 : STA shells,Y
-    INY : INX : CPX #16 : BNE copy
+    DEY : DEX : BPL copy
     RTS
 }
 
-\ Y = shell_i's offset in shells, X = 0. (X indexes the zero page block:
-\ zp,X is a byte shorter than abs,Y.)
+\ Y = the offset of shell_i's last byte in shells, X = 15: the copies run
+\ backwards to end on a BPL. (X indexes the zero page block: zp,X is a
+\ byte shorter than abs,Y.)
 .shell_offset
-    LDA shell_i : ASL A : ASL A : ASL A : ASL A : TAY
-    LDX #0
+    LDA shell_i : ASL A : ASL A : ASL A : ASL A : ORA #15 : TAY
+    LDX #15
     RTS
 
 \ Put the zero page shell into a free slot, if there is one.
@@ -221,8 +221,8 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     INX : CPX #MAXSH : BNE find
     RTS
 .free
-    LDA #1 : STA sh_active,X
-    LDA #0 : STA sh_drawn,X
+    INC sh_active,X                             ; (it was 0, and so is A)
+    STA sh_drawn,X
     STX shell_i
     JMP save_shell
 }
@@ -233,7 +233,9 @@ ZA_AUTO1 shell_i            ; the shell being worked on
 {
     ZA_AUTO1 any, i
     ZA_AUTO2 frames
-    LDA #0 : STA frames : STA frames+1
+    ASSERT LO(MAX_FRAMES) = 0
+    LDA #0 : STA frames
+    LDA #HI(MAX_FRAMES) : STA frames+1
 .frame
     LDA #0 : STA any : STA i
 .shell_loop
@@ -259,8 +261,7 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     \ Give up on anything still flying after MAX_FRAMES, as fly_quiet does:
     \ a shell kept in the air somehow (a mag by a rubber wall?) mustn't
     \ hang the game.
-    INC frames : BNE @+ : INC frames+1 : .@
-    LDA frames+1 : CMP #HI(MAX_FRAMES) : BCS done
+    DEC frames : BNE @+ : DEC frames+1 : BEQ done : .@
     \ A smoke tracer's trail changes colour every frame: smoke counts
     \ 7 down to 1, round and round (0 for anything else).
     LDX smoke : BEQ plain
@@ -276,27 +277,28 @@ ZA_AUTO1 shell_i            ; the shell being worked on
 }
 
 \ Redraw every shell's dot at its new position.
+\ (It counts in shell_i, for shell_offset: nothing reads shell_i after
+\ fly_shells' loop, which sets it afresh for every shell.)
 .draw_shells
 {
-    ZA_AUTO1 i
-    LDA #0 : STA i
+    LDA #0 : STA shell_i
 .loop
-    LDX i : LDA sh_active,X : BEQ next
+    LDX shell_i : LDA sh_active,X : BEQ next
     LDA shot_trail : BNE keep
     JSR undraw_shell
 .keep
-    LDA i : ASL A : ASL A : ASL A : ASL A : TAY
-    LDA shells+3,Y : BNE next                   ; x off screen
-    LDA shells+7,Y : BNE next                   ; y off screen
-    LDA shells+2,Y : CMP #SCREEN_W : BCS next
-    LDA shells+6,Y : CMP #TOP : BCC next
-    LDX i : STA sh_oldy,X : PHA
+    JSR shell_offset                            ; (Y: the record's last byte)
+    LDA shells+3-15,Y : BNE next                ; x off screen
+    LDA shells+7-15,Y : BNE next                ; y off screen
+    LDA shells+2-15,Y : CMP #SCREEN_W : BCS next
+    LDA shells+6-15,Y : CMP #TOP : BCC next
+    LDX shell_i : PHA
     STA sh_drawn,X                              ; (the row: never 0)
-    LDA shells+2,Y : STA sh_oldx,X
+    LDA shells+2-15,Y : STA sh_oldx,X
     TAX : PLA : TAY
     LDA shot_colour : JSR plot
 .next
-    INC i : LDA i : CMP #MAXSH : BNE loop
+    INC shell_i : LDA shell_i : CMP #MAXSH : BNE loop
 .done
     RTS
 }
@@ -304,9 +306,9 @@ ZA_AUTO1 shell_i            ; the shell being worked on
 \ Take shell X's dot off the screen, if it is on it.
 .undraw_shell
 {
-    LDA sh_drawn,X : BEQ draw_shells.done
+    LDY sh_drawn,X : BEQ draw_shells.done       ; (the row it is on)
     LDA #0 : STA sh_drawn,X
-    LDY sh_oldy,X : LDA sh_oldx,X : TAX
+    LDA sh_oldx,X : TAX
     JMP unplot
 }
 
@@ -357,6 +359,7 @@ SPREAD = 2200
 \ A Riot Bomb is an explosion like any other: its blast power is 0.
 .land
 {
+    ZA_AUTO1 x, dir                             ; (a roller's)
     LDA hit_kind : CMP #HIT_LOST : BEQ none
     LDA hit_x : STA disc_cx
     LDA hit_y : STA disc_cy
@@ -376,14 +379,6 @@ ASSERT LEN(landings) = SK_BURROW + 1 AND SK_CHARGE = SK_BURROW + 1
     EQUB HI(landings - 1)
 .none
     RTS
-.bomblet
-    LDA #7 : STA expl_r
-    LDA #50 : STA blast_power
-    BNE boom                                    ; (always)
-.roller
-    LDA hit_kind : CMP #HIT_TANK : BEQ boom : JSR roll
-.boom
-    JMP explosion
 .leap
     JSR explosion
     LDA shot_kind : AND #3*HOP : BEQ none
@@ -395,38 +390,14 @@ ASSERT LEN(landings) = SK_BURROW + 1 AND SK_CHARGE = SK_BURROW + 1
     LDA hit_y : SEC : SBC #3 : STA shot_y+2
     LDA #0 : STA shot_y+3
     JMP spawn_shell
-.funky
-    JSR explosion
-    \ fall through
-}
-
-\ A Funky Bomb throws six bomblets up and out from where it burst.
-.scatter
-{
-    ZA_AUTO1 n
-    LDA #6 : STA n
-    LDA disc_cy : SEC : SBC #4 : STA shot_y+2
-.more
-    LDA #SK_BOMBLET : STA shot_kind
-    LDA hit_x : STA shot_x+2
-    LDA #0 : STA shot_x+3 : STA shot_y+3 : STA shot_vx : STA shot_vy
-    \ vx: random, +-0.25 px/substep; vy: up, 0.25-0.75 rows/substep
-    LDX #0
-    JSR rand : CMP #&80 : ROR A : STA shot_vx+1 ; /2, keeping sign
-    BPL @+ : DEX : .@
-    STX shot_vx+2
-    JSR rand : AND #&3F : EOR #&BF : STA shot_vy+1  ; NOT (&40 + 0..&3F)
-    LDA #&FF : STA shot_vy+2
-    JSR spawn_shell
-    DEC n : BNE more
-    RTS
-}
-
+.bomblet
+    LDA #7 : STA expl_r
+    LDA #50 : STA blast_power
+    BNE boom                                    ; (always)
 \ A roller rolls downhill from where it landed until it reaches a valley,
 \ a tank or the edge, and the blast happens there (disc_cx, disc_cy).
-.roll
-{
-    ZA_AUTO1 x, dir
+.roller
+    LDA hit_kind : CMP #HIT_TANK : BEQ boom
     LDX hit_x : STX x
     \ which way is down?
     LDA ground-1,X : CMP ground+1,X : BEQ stop
@@ -450,5 +421,31 @@ ASSERT LEN(landings) = SK_BURROW + 1 AND SK_CHARGE = SK_BURROW + 1
 .stop
     LDX x : STX disc_cx
     LDY ground,X : DEY : STY disc_cy
+.boom
+    JMP explosion
+.funky
+    JSR explosion
+    \ fall through
+}
+
+\ A Funky Bomb throws six bomblets up and out from where it burst.
+.scatter
+{
+    ZA_AUTO1 n
+    LDA #6 : STA n
+    LDA disc_cy : SEC : SBC #4 : STA shot_y+2
+.more
+    LDA #SK_BOMBLET : STA shot_kind
+    LDA hit_x : STA shot_x+2
+    LDX #0 : STX shot_x+3 : STX shot_y+3 : STX shot_vx : STX shot_vy
+    \ vx: random, +-0.25 px/substep; vy: up, 0.25-0.75 rows/substep
+    \ (rand preserves X)
+    JSR rand : CMP #&80 : ROR A : STA shot_vx+1 ; /2, keeping sign
+    BPL @+ : DEX : .@
+    STX shot_vx+2
+    JSR rand : AND #&3F : EOR #&BF : STA shot_vy+1  ; NOT (&40 + 0..&3F)
+    LDA #&FF : STA shot_vy+2
+    JSR spawn_shell
+    DEC n : BNE more
     RTS
 }
