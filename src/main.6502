@@ -31,9 +31,9 @@ SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filena
     SECTION Code, org = &0E00, guard = screen
     ZA_POOL &00..zp_fixed-1     ; zp_fixed..&8F: busy arrays (memory.6502)
 
+    \ No entry point here: boot.6502 jumps straight to main, so the
+    \ allocator follows one flow from boot into the game.
     .start
-        ZA_ENTRY
-        JMP main
 
     INCLUDE "system.6502"
     INCLUDE "gfx.6502"

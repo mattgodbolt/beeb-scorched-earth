@@ -102,10 +102,8 @@ NEXT
 I_ROLLER = 13 : I_HEAVY_ROLLER = 14 : I_SANDHOG = 23 : I_FORCE = I_SHIELD + 2
 ASSERT ITEMS[I_ROLLER][0] = "ROLLER" AND ITEMS[I_HEAVY_ROLLER][0] = "HEAVY ROLLER"
 ASSERT ITEMS[I_SANDHOG][0] = "SANDHOG" AND ITEMS[I_FORCE][0] = "FORCE SHIELD"
-\ Inventory: inv[inv_base[player] + item]. (No hole below &0E00 is big
-\ enough for it any more.)
-.inv_base       EQUB (0..MAXP-1) * NITEMS
-.inv            SKIP MAXP * NITEMS
+\ Inventory: inv[inv_base[player] + item]. (Both are in memory.6502 and
+\ lowdata.6502.)
 
 .item_names
 FOR i = 0..NITEMS-1

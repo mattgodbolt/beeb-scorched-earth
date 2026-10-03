@@ -3,17 +3,8 @@
 \ Glyphs are drawn byte-aligned: a cell is exactly two screen bytes wide.
 \ ***************************************************************************
 
-\ A glyph is five rows of three pixels packed into a word, top row in the
-\ top bits: rows land at bits 15-13, 12-10, 9-7, 6-4 and 3-1.
-FUNCTION rowbits(s) = SUM((CODES(s) == 35) * {4, 2, 1})
-FUNCTION glyph(a, b, c, d, e) = (rowbits(a) << 13) + (rowbits(b) << 10) + (rowbits(c) << 7) + (rowbits(d) << 4) + (rowbits(e) << 1)
-MACRO GLYPH a, b, c, d, e
-    EQUW glyph(a, b, c, d, e)
-ENDMACRO
-
-\ Colour bytes for logical colours 0-15, both pixels.
-.cbytes
-    EQUB cbyte(0..15)
+\ (The font and cbytes, colour bytes for logical colours 0-15, are in
+\ lowdata.6502.)
 
 ZA_AUTO1 text_x, text_y     ; pixel position of the next character (x even)
 
@@ -123,68 +114,7 @@ ZA_AUTO 3, num
 .skip
     DEY : BPL place
     RTS
-.pow_lo  EQUB LO({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
-.pow_mid EQUB HI({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
-.pow_hi  EQUB ({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000} >> 16) AND 255
+    \ (pow_lo/mid/hi are in lowdata.6502.)
 }
 
-\ Glyphs for font characters FONT_LO to FONT_HI - 1: ASCII, but for the
-\ ones no text uses. Letters and digits are where ASCII has them, as are
-\ / < > ? (game.6502 prints < and > by code); $ , - take the places of
-\ : ; =, and . ! ' those of [ \ ] for packed text's one-code characters.
-FONT_LO = 46
-.font
-    GLYPH "...", ".#.", "###", ".#.", "..."     ; + (at .: a dirty build's stamp)
-    GLYPH "..#", "..#", ".#.", "#..", "#.."     ; /
-    GLYPH "###", "#.#", "#.#", "#.#", "###"     ; 0
-    GLYPH ".#.", "##.", ".#.", ".#.", "###"     ; 1
-    GLYPH "###", "..#", "###", "#..", "###"     ; 2
-    GLYPH "###", "..#", ".##", "..#", "###"     ; 3
-    GLYPH "#.#", "#.#", "###", "..#", "..#"     ; 4
-    GLYPH "###", "#..", "###", "..#", "###"     ; 5
-    GLYPH "###", "#..", "###", "#.#", "###"     ; 6
-    GLYPH "###", "..#", "..#", ".#.", ".#."     ; 7
-    GLYPH "###", "#.#", "###", "#.#", "###"     ; 8
-    GLYPH "###", "#.#", "###", "..#", "###"     ; 9
-FONT_DOLLAR = 58
-    GLYPH ".##", "##.", ".#.", ".##", "##."     ; $ (at :)
-    GLYPH "...", "...", "...", ".#.", "#.."     ; , (at ;)
-    GLYPH "..#", ".#.", "#..", ".#.", "..#"     ; <
-    GLYPH "...", "...", "###", "...", "..."     ; - (at =)
-    GLYPH "#..", ".#.", "..#", ".#.", "#.."     ; >
-    GLYPH "###", "..#", ".##", "...", ".#."     ; ?
-FONT_BLANK = 64
-.font_blank
-    GLYPH "...", "...", "...", "...", "..."     ; blank (at @)
-    GLYPH ".#.", "#.#", "###", "#.#", "#.#"     ; A
-    GLYPH "##.", "#.#", "##.", "#.#", "##."     ; B
-    GLYPH ".##", "#..", "#..", "#..", ".##"     ; C
-    GLYPH "##.", "#.#", "#.#", "#.#", "##."     ; D
-    GLYPH "###", "#..", "##.", "#..", "###"     ; E
-    GLYPH "###", "#..", "##.", "#..", "#.."     ; F
-    GLYPH ".##", "#..", "#.#", "#.#", ".##"     ; G
-    GLYPH "#.#", "#.#", "###", "#.#", "#.#"     ; H
-    GLYPH "###", ".#.", ".#.", ".#.", "###"     ; I
-    GLYPH "..#", "..#", "..#", "#.#", ".#."     ; J
-    GLYPH "#.#", "#.#", "##.", "#.#", "#.#"     ; K
-    GLYPH "#..", "#..", "#..", "#..", "###"     ; L
-    GLYPH "#.#", "###", "###", "#.#", "#.#"     ; M
-    GLYPH "##.", "#.#", "#.#", "#.#", "#.#"     ; N
-    GLYPH ".#.", "#.#", "#.#", "#.#", ".#."     ; O
-    GLYPH "##.", "#.#", "##.", "#..", "#.."     ; P
-    GLYPH ".#.", "#.#", "#.#", "##.", ".##"     ; Q
-    GLYPH "##.", "#.#", "##.", "#.#", "#.#"     ; R
-    GLYPH ".##", "#..", ".#.", "..#", "##."     ; S
-    GLYPH "###", ".#.", ".#.", ".#.", ".#."     ; T
-    GLYPH "#.#", "#.#", "#.#", "#.#", "###"     ; U
-    GLYPH "#.#", "#.#", "#.#", "#.#", ".#."     ; V
-    GLYPH "#.#", "#.#", "###", "###", "#.#"     ; W
-    GLYPH "#.#", "#.#", ".#.", "#.#", "#.#"     ; X
-    GLYPH "#.#", "#.#", ".#.", ".#.", ".#."     ; Y
-    GLYPH "###", "..#", ".#.", "#..", "###"     ; Z
-    GLYPH "...", "...", "...", "...", ".#."     ; . (at [)
-    GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; ! (at \)
-    GLYPH ".#.", ".#.", "...", "...", "..."     ; ' (at ])
-.font_end
-FONT_HI = FONT_LO + (font_end - font) DIV 2
-ASSERT FONT_HI = 94 AND FONT_BLANK - FONT_LO = (font_blank - font) DIV 2
+\ (The font is in lowdata.6502.)

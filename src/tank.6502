@@ -9,9 +9,7 @@ TANK_HALF   = 3             ; columns either side of tank_x
 TANK_H      = 5             ; rows
 BARREL_LEN  = 7
 
-\ Player colours: red, yellow, magenta, cyan, white, blue.
-.player_colours
-    EQUB C_RED, C_YELLOW, C_MAGENTA, C_CYAN, C_WHITE, C_BLUE
+\ (player_colours, only read at start-up, is in boot.6502.)
 
 \ The body, top row first, bit 7 = leftmost column.
 .tank_shape
@@ -43,63 +41,39 @@ ZA_AUTO1 vec_up, vec_side, vec_left
 
 ZA_AUTO1 cur                ; the player a routine is working on
 
-\ Draw tank `cur`: body, shield, then barrel.
-.draw_tank
-    JSR draw_body
-    LDX cur : LDA tank_shield,X : BEQ noshield
-    JSR draw_shield
-.noshield
-    LDA draw_body.col
-    JMP barrel
-
-\ A shield is a dotted dome over the tank, in its colour.
-SHIELD_R = 8
-.draw_shield
+\ A shield dot at column A (if it's on the screen), row Y.
+.shield_dot
 {
-    ZA_AUTO1 dy, t
-    \ Top row down, so dy counts down while the row in Y counts up. (Every
-    \ dot is the same colour: the order doesn't show.)
-    LDA #SHIELD_R : STA disc_r : STA dy
-    JSR make_profile
-    LDX cur : LDA tank_y,X : SEC : SBC #2+SHIELD_R : TAY
-.row
-    CPY #TOP : BCC next                         ; (plot preserves Y)
-    LDX dy : LDA profile,X : STA t
-    LDX cur : LDA tank_x,X : SEC : SBC t : JSR dot
-    LDX cur : LDA tank_x,X : CLC : ADC t : JSR dot
-.next
-    INY
-    DEC dy : BPL row
-    RTS
-.dot
     CMP #SCREEN_W : BCS off
     TAX : LDA draw_body.col : JMP plot
 .off
     RTS
 }
 
-\ Draw the body of tank `cur`.
-.draw_body
+\ Draw tank `cur`: body, shield, then barrel.
+SHIELD_R = 8
+.draw_tank
 {
-    ZA_AUTO1 row, bits, col
-    LDX cur
-    LDA tank_colour,X : TAY : LDA cbytes,Y : STA col
-    \ Y = y and X = x throughout: plot preserves both. Bottom row first.
-    LDA tank_y,X : TAY
-    LDA #TANK_H-1 : STA row
-.rowloop
-    LDX row : LDA tank_shape,X : STA bits
-    LDX cur : LDA tank_x,X : SEC : SBC #TANK_HALF : TAX
-.pix
-    ASL bits : BCC skip
-    CPX #SCREEN_W : BCS skip                    ; (clipped at the edges)
-    LDA col : JSR plot
-.skip
-    INX
-    LDA bits : BNE pix
-    DEY
-    DEC row : BPL rowloop
-    RTS
+    ZA_AUTO1 dy
+    JSR draw_body
+    LDX cur : LDA tank_shield,X : BEQ noshield
+    \ A shield is a dotted dome over the tank, in its colour. Top row
+    \ down, so dy counts down while the row in Y counts up. (Every dot is
+    \ the same colour: the order doesn't show.)
+    LDA #SHIELD_R : STA disc_r : STA dy
+    JSR make_profile
+    LDX cur : LDA tank_y,X : SEC : SBC #2+SHIELD_R : TAY
+.row
+    CPY #TOP : BCC next                         ; (plot preserves Y)
+    LDX dy : LDA profile,X : PHA
+    EOR #&FF : SEC : LDX cur : ADC tank_x,X : JSR shield_dot   ; x - half
+    PLA : CLC : LDX cur : ADC tank_x,X : JSR shield_dot        ; x + half
+.next
+    INY
+    DEC dy : BPL row
+.noshield
+    LDA draw_body.col
+    \ fall through
 }
 
 \ Draw (A = colour byte) or, via erase_barrel, undraw the barrel of
@@ -132,11 +106,11 @@ SHIELD_R = 8
 .right
     ADC tank_x,X : TAX
     CPX #SCREEN_W : BCS skip
-    LDA col : BEQ erase
-    JSR plot
-    JMP skip
-.erase
+    LDA col : BNE draw
     JSR unplot                                  ; the background
+    BNE skip                    ; (always: plot ends on LDY of the row, >= TOP)
+.draw
+    JSR plot
 .skip
     DEC k : BNE point
     RTS
@@ -145,9 +119,31 @@ SHIELD_R = 8
 \ Take the barrel away (repainting the background under it), then redraw
 \ the body in case the barrel crossed it.
 .erase_barrel
-{
     LDA #0 : JSR barrel
-    JMP draw_body
+    \ fall through
+
+\ Draw the body of tank `cur`.
+.draw_body
+{
+    ZA_AUTO1 row, bits, col
+    LDX cur
+    LDA tank_colour,X : TAY : LDA cbytes,Y : STA col
+    \ Y = y and X = x throughout: plot preserves both. Bottom row first.
+    LDA tank_y,X : TAY
+    LDA #TANK_H-1 : STA row
+.rowloop
+    LDX row : LDA tank_shape,X : STA bits
+    LDX cur : LDA tank_x,X : SEC : SBC #TANK_HALF : TAX
+.pix
+    ASL bits : BCC skip
+    CPX #SCREEN_W : BCS skip                    ; (clipped at the edges)
+    LDA col : JSR plot
+.skip
+    INX
+    LDA bits : BNE pix
+    DEY
+    DEC row : BPL rowloop
+    RTS
 }
 
 \ Take a whole tank away: repaint its box and the space its barrel sweeps.
@@ -168,12 +164,12 @@ SHIELD_R = 8
 .draw_tanks
 {
     LDA cur : PHA
-    LDA #0 : STA cur
+    LDX #0 : STX cur
 .loop
-    LDX cur : LDA tank_alive,X : BEQ next
+    LDA tank_alive,X : BEQ next
     JSR draw_tank
 .next
-    INC cur : LDA cur : CMP num_players : BNE loop
+    INC cur : LDX cur : CPX num_players : BNE loop
     PLA : STA cur
     RTS
 }

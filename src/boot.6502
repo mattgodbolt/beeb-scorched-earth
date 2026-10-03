@@ -13,23 +13,27 @@
     ZA_ENTRY
     \ The constant tables that live below &0E00 (lowdata.6502). First,
     \ because they are carried in screen memory and init_system clears it.
-    LDX #low_tape_end - sintab
+    LDX #low_tape_end - low_tape_start
 .tape
-    LDA low_tape_payload-1,X : STA sintab-1,X
+    LDA low_tape_payload-1,X : STA low_tape_start-1,X
     DEX : BNE tape
-    \ (Indexed by Y: item_price_lo-1 is &FF, and STA &FF,X is a zero page
+    \ (Indexed by Y: low_stack_start-1 is &FF, and STA &FF,X is a zero page
     \ store that wraps round inside zero page.)
-    LDY #low_stack_end - item_price_lo
+    LDY #low_stack_end - low_stack_start
 .stack
-    LDA low_stack_payload-1,Y : STA item_price_lo-1,Y
+    LDA low_stack_payload-1,Y : STA low_stack_start-1,Y
     DEY : BNE stack
-    LDX #low_udg_end - item_radius
+    LDX #low_printer_end - low_printer_start
+.printer
+    LDA low_printer_payload-1,X : STA low_printer_start-1,X
+    DEX : BNE printer
+    LDX #low_udg_end - low_udg_start
 .udg
-    LDA low_udg_payload-1,X : STA item_radius-1,X
+    LDA low_udg_payload-1,X : STA low_udg_start-1,X
     DEX : BNE udg
-    LDX #low_nmi_end - item_kind
+    LDX #low_nmi_end - low_nmi_start
 .nmi
-    LDA low_nmi_payload-1,X : STA item_kind-1,X
+    LDA low_nmi_payload-1,X : STA low_nmi_start-1,X
     DEX : BNE nmi
     JSR init_system
     JSR init_tables
@@ -41,7 +45,10 @@
     LDA #SPOILER : STA tank_type,X
     DEX : BPL defaults
     LDA #HUMAN : STA tank_type
-    JMP start
+    JMP main
+\ Player colours: red, yellow, magenta, cyan, white, blue.
+.player_colours
+    EQUB C_RED, C_YELLOW, C_MAGENTA, C_CYAN, C_WHITE, C_BLUE
 }
 
 \ Cursor off, screen shortened, palette set, interrupts hooked. (!BOOT has
@@ -69,8 +76,9 @@
     LDA #229 : LDX #1 : LDY #0 : JSR osbyte
     \ Cursor keys give codes 136-139 to OSRDCH, for the menus.
     LDA #4 : LDX #1 : JSR osbyte
-    \ Hook IRQ1V to count vsyncs.
+    \ Hook IRQ1V to count vsyncs, from 0.
     SEI
+    LDA #0 : STA vsyncs
     LDA irq1v : STA old_irq
     LDA irq1v+1 : STA old_irq+1
     LDA #LO(our_irq) : STA irq1v
@@ -86,7 +94,7 @@
 .crtc_end
 }
 
-\ Build the row and column address tables.
+\ Build the row address tables.
 .init_tables
 {
     ZA_AUTO2 base
@@ -99,17 +107,12 @@
 .row
     TYA : AND #7 : ORA base : STA rowlo,Y
     LDA base+1 : STA rowhi,Y
-    INY : BEQ cols
+    INY : BEQ done
     TYA : AND #7 : BNE row
     LDA base : CLC : ADC #LO(640) : STA base     ; next character row
     LDA base+1 : ADC #HI(640) : STA base+1
     BCC row                                     ; (always: no carry out)
-.cols
-    LDX #0
-.col
-    TXA : AND #&FE : ASL A : ASL A : STA coloff_lo,X     ; (x >> 1) * 8
-    TXA : LSR A : LSR A : LSR A : LSR A : LSR A : LSR A : STA coloff_hi,X
-    INX : CPX #SCREEN_W : BNE col
+.done
     RTS
 }
 

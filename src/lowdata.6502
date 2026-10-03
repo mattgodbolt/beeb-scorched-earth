@@ -3,33 +3,133 @@
 \ main.6502 carries each section inside the SCORCH file and boot.6502 copies
 \ it into place, so none of them costs a byte of code space. Only data read
 \ by address belongs here: nothing in these sections is ever written.
+\ Boot copies each section from its low_*_start label, so tables can move
+\ between holes freely.
 \ ***************************************************************************
+
+\ A glyph is five rows of three pixels packed into a word, top row in the
+\ top bits: rows land at bits 15-13, 12-10, 9-7, 6-4 and 3-1.
+FUNCTION rowbits(s) = SUM((CODES(s) == 35) * {4, 2, 1})
+FUNCTION glyph(a, b, c, d, e) = (rowbits(a) << 13) + (rowbits(b) << 10) + (rowbits(c) << 7) + (rowbits(d) << 4) + (rowbits(e) << 1)
+MACRO GLYPH a, b, c, d, e
+    EQUW glyph(a, b, c, d, e)
+ENDMACRO
 
 .low_tape_payload
 SECTION LowTape, org = &0380, guard = &03E0
+.low_tape_start
 \ sin(d) * 255 for d = 0..90 degrees.
 .sintab
     EQUB ROUND(SIN((0..90) * PI / 180) * 255)
+\ Power wobble by computer type, from SHOOTER (ai.6502).
+.ai_wobble      EQUB 60, 120, 70, 35, 0     ; (20 for a Spoiler was murderous)
 .low_tape_end
 ENDSECTION
 
 .low_stack_payload
 SECTION LowStack, org = &0100, guard = stack_low_guard
+.low_stack_start
 .item_price_lo  EQUB LO(ITEMS[.., 4])
 .item_price_hi  EQUB HI(ITEMS[.., 4])
 .item_bundle    EQUB ITEMS[.., 5]
+.item_power     EQUB ITEMS[.., 3]
+\ A byte's pixel bits, indexed by (left pixel) * 2 + (right pixel).
+.pixmasks       EQUB 0, RIGHTPIX, LEFTPIX, &FF
 .low_stack_end
+ENDSECTION
+
+.low_printer_payload
+SECTION LowPrinter, org = printer_end, guard = &08C0
+.low_printer_start
+.item_radius    EQUB ITEMS[.., 2]
+\ Each computer type's angles, from SHOOTER: the first ai_angles entry
+\ it tries, and how many (ai.6502).
+.ai_first       EQUB 0, 1, 2, 2, 2
+.ai_count       EQUB 1, 1, 4, 4, 4
+.low_printer_end
 ENDSECTION
 
 .low_udg_payload
 SECTION LowUdg, org = tables_end, guard = &0D00
-.item_radius    EQUB ITEMS[.., 2]
-.item_power     EQUB ITEMS[.., 3]
+.low_udg_start
+\ Dirt stripe colours, one picked a round (make_colours).
+.stripes
+    EQUB cbyte(C_YELLOW), cbyte(C_CYAN), cbyte(C_WHITE), cbyte(C_BLUE)
+\ Each player's first byte of inv (weapons.6502, memory.6502).
+.inv_base       EQUB (0..MAXP-1) * NITEMS
+\ Powers of ten for print_number (text.6502).
+.pow_lo  EQUB LO({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
+.pow_mid EQUB HI({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
+.pow_hi  EQUB ({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000} >> 16) AND 255
+\ draw_char's glyphs (text.6502), for font characters FONT_LO to
+\ FONT_HI - 1: ASCII, but for the ones no text uses. Letters and digits
+\ are where ASCII has them, as are / < > ? (game.6502 prints < and > by
+\ code); $ , - take the places of : ; =, and . ! ' those of [ \ ] for
+\ packed text's one-code characters.
+FONT_LO = 46
+.font
+    GLYPH "...", ".#.", "###", ".#.", "..."     ; + (at .: a dirty build's stamp)
+    GLYPH "..#", "..#", ".#.", "#..", "#.."     ; /
+    GLYPH "###", "#.#", "#.#", "#.#", "###"     ; 0
+    GLYPH ".#.", "##.", ".#.", ".#.", "###"     ; 1
+    GLYPH "###", "..#", "###", "#..", "###"     ; 2
+    GLYPH "###", "..#", ".##", "..#", "###"     ; 3
+    GLYPH "#.#", "#.#", "###", "..#", "..#"     ; 4
+    GLYPH "###", "#..", "###", "..#", "###"     ; 5
+    GLYPH "###", "#..", "###", "#.#", "###"     ; 6
+    GLYPH "###", "..#", "..#", ".#.", ".#."     ; 7
+    GLYPH "###", "#.#", "###", "#.#", "###"     ; 8
+    GLYPH "###", "#.#", "###", "..#", "###"     ; 9
+FONT_DOLLAR = 58
+    GLYPH ".##", "##.", ".#.", ".##", "##."     ; $ (at :)
+    GLYPH "...", "...", "...", ".#.", "#.."     ; , (at ;)
+    GLYPH "..#", ".#.", "#..", ".#.", "..#"     ; <
+    GLYPH "...", "...", "###", "...", "..."     ; - (at =)
+    GLYPH "#..", ".#.", "..#", ".#.", "#.."     ; >
+    GLYPH "###", "..#", ".##", "...", ".#."     ; ?
+FONT_BLANK = 64
+.font_blank
+    GLYPH "...", "...", "...", "...", "..."     ; blank (at @)
+    GLYPH ".#.", "#.#", "###", "#.#", "#.#"     ; A
+    GLYPH "##.", "#.#", "##.", "#.#", "##."     ; B
+    GLYPH ".##", "#..", "#..", "#..", ".##"     ; C
+    GLYPH "##.", "#.#", "#.#", "#.#", "##."     ; D
+    GLYPH "###", "#..", "##.", "#..", "###"     ; E
+    GLYPH "###", "#..", "##.", "#..", "#.."     ; F
+    GLYPH ".##", "#..", "#.#", "#.#", ".##"     ; G
+    GLYPH "#.#", "#.#", "###", "#.#", "#.#"     ; H
+    GLYPH "###", ".#.", ".#.", ".#.", "###"     ; I
+    GLYPH "..#", "..#", "..#", "#.#", ".#."     ; J
+    GLYPH "#.#", "#.#", "##.", "#.#", "#.#"     ; K
+    GLYPH "#..", "#..", "#..", "#..", "###"     ; L
+    GLYPH "#.#", "###", "###", "#.#", "#.#"     ; M
+    GLYPH "##.", "#.#", "#.#", "#.#", "#.#"     ; N
+    GLYPH ".#.", "#.#", "#.#", "#.#", ".#."     ; O
+    GLYPH "##.", "#.#", "##.", "#..", "#.."     ; P
+    GLYPH ".#.", "#.#", "#.#", "##.", ".##"     ; Q
+    GLYPH "##.", "#.#", "##.", "#.#", "#.#"     ; R
+    GLYPH ".##", "#..", ".#.", "..#", "##."     ; S
+    GLYPH "###", ".#.", ".#.", ".#.", ".#."     ; T
+    GLYPH "#.#", "#.#", "#.#", "#.#", "###"     ; U
+    GLYPH "#.#", "#.#", "#.#", "#.#", ".#."     ; V
+    GLYPH "#.#", "#.#", "###", "###", "#.#"     ; W
+    GLYPH "#.#", "#.#", ".#.", "#.#", "#.#"     ; X
+    GLYPH "#.#", "#.#", ".#.", ".#.", ".#."     ; Y
+    GLYPH "###", "..#", ".#.", "#..", "###"     ; Z
+    GLYPH "...", "...", "...", "...", ".#."     ; . (at [)
+    GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; ! (at \)
+    GLYPH ".#.", ".#.", "...", "...", "..."     ; ' (at ])
+.font_end
+FONT_HI = FONT_LO + (font_end - font) DIV 2
+ASSERT FONT_HI = 94 AND FONT_BLANK - FONT_LO = (font_blank - font) DIV 2
 .low_udg_end
 ENDSECTION
 
 .low_nmi_payload
 SECTION LowNmi, org = nmi_end, guard = &0DF0
+.low_nmi_start
 .item_kind      EQUB ITEMS[.., 1]
+\ Colour bytes for logical colours 0-15, both pixels.
+.cbytes         EQUB cbyte(0..15)
 .low_nmi_end
 ENDSECTION
