@@ -190,7 +190,7 @@ ENDMACRO
 \ Print player X's money in 7 columns, with a dollar sign.
 .print_money
     JSR get_money
-    LDA #36 : JSR draw_char            ; $
+    LDA #FONT_DOLLAR : JSR draw_char
     LDA #6 : JMP print_num
 
 \ Carry set if player X has num dollars, with Y = where the money is in

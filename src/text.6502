@@ -26,21 +26,23 @@ ZA_AUTO1 ink_byte
     TAX : LDA cbytes,X : STA ink_byte
     RTS
 
-\ Draw character A at (text_x, text_y) and move text_x on a cell. Returns
-\ A = text_x (menu.6502's "JSR draw_char : JSR draw_char" relies on that
-\ being >= 96, past the font, so the second call draws a space), never zero, and
-\ with carry clear: menu.6502 relies on both. Preserves Y, which the two
-\ loops below that print with it index by.
+\ Draw character A at (text_x, text_y) and move text_x on a cell: A is
+\ ASCII, except as the font says. Returns A = text_x (menu.6502's
+\ "JSR draw_char : JSR draw_char" relies on that being outside the font,
+\ so the second call draws a space), never zero, and with carry clear:
+\ menu.6502 relies on both. Preserves Y, which the two loops below that
+\ print with it index by.
 .draw_char
 {
     ZA_AUTO2 bits
     ZA_AUTO1 row, y, ysave
     STY ysave
-    \ Nothing passes a control code; anything past the font is a space.
-    CMP #32 + (font_end - font) DIV 2 : BCC @+ : LDA #32 : .@
+    \ Anything outside the font, space included, is a space.
+    SEC : SBC #FONT_LO : CMP #FONT_HI - FONT_LO : BCC @+
+    LDA #FONT_BLANK - FONT_LO : .@
     ASL A : TAX
-    LDA font-64,X : STA bits                    ; (the font starts at 32)
-    LDA font-63,X : STA bits+1
+    LDA font,X : STA bits
+    LDA font+1,X : STA bits+1
     LDA #6 : STA row
     LDA text_y : STA y
 .rowloop
@@ -63,18 +65,21 @@ ZA_AUTO1 ink_byte
     RTS
 }
 
-\ Packed text, five bits a character, first bit highest: code c is ASCII
-\ c + 64 - letters, then 27-29 for . ! ' (which the font repeats at 91-93)
-\ and 30 for a space (94, past the font: draw_char's space). 31 ends the
-\ string, which is padded to a whole byte. Code 0 escapes: the next five
-\ bits are ASCII 32-63, for digits and the rarer punctuation. menu.6502's
-\ unpack reads it. (Defined here, ahead of every file that uses it.)
-\ T5 is the codes for each of ASCII 32-90.
-T5 = CONCAT({{30}, {28}}, ZIP(REPEATED(5, 0), 2..6), {{29}}, ZIP(REPEATED(6, 0), 8..13), {{27}}, ZIP(REPEATED(17, 0), 15..31), {{0}}, ZIP(1..26))
+\ Packed text, five bits a character, first bit highest: code c is font
+\ character c + 64 - letters, then 27-29 for . ! ' and 30 for a space
+\ (94, past the font). 31 ends the string, which is padded to a whole byte.
+\ Code 0 escapes: the next five bits are font character 32-63, for digits
+\ and the rarer punctuation. menu.6502's unpack reads it. (Defined here,
+\ ahead of every file that uses it.)
+\ T5 is the codes for each of ASCII 32-90; 99 marks one the font lacks.
+NO = 99
+T5_PUNCT = {{30}, {28}, {NO}, {NO}, {0, 26}, {NO}, {NO}, {29}, {NO}, {NO}, {NO}, {0, 14}, {0, 27}, {0, 29}, {27}, {0, 15}}
+T5 = CONCAT(T5_PUNCT, ZIP(REPEATED(10, 0), 16..25), {{NO}, {NO}, {0, 28}, {NO}, {0, 30}, {0, 31}, {NO}}, ZIP(1..26))
 ASSERT LEN(T5) = 90 - 32 + 1
 FUNCTION codes5(s) = CONCAT(FLATTEN(T5[CODES(s) - 32]), 31, 0, 0)
 MACRO PACKED text
     c5 = codes5(text)
+    ASSERT MAX(c5) < 32                         ; (else the font lacks one)
     FOR k = 0..<((LEN(c5) - 2) * 5 + 7) DIV 8
         EQUB ((c5[k * 8 DIV 5] * 1024 + c5[k * 8 DIV 5 + 1] * 32 + c5[k * 8 DIV 5 + 2]) >> (7 - k * 8 MOD 5)) AND 255
     NEXT
@@ -123,23 +128,13 @@ ZA_AUTO 3, num
 .pow_hi  EQUB ({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000} >> 16) AND 255
 }
 
-\ Glyphs for ASCII 32-90, space to Z.
+\ Glyphs for font characters FONT_LO to FONT_HI - 1: ASCII, but for the
+\ ones no text uses. Letters and digits are where ASCII has them, as are
+\ / < > ? (game.6502 prints < and > by code); $ , - take the places of
+\ : ; =, and . ! ' those of [ \ ] for packed text's one-code characters.
+FONT_LO = 46
 .font
-    GLYPH "...", "...", "...", "...", "..."     ; space
-    GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; !
-    GLYPH "#.#", "#.#", "...", "...", "..."     ; "
-    GLYPH "#.#", "###", "#.#", "###", "#.#"     ; #
-    GLYPH ".##", "##.", ".#.", ".##", "##."     ; $
-    GLYPH "#.#", "..#", ".#.", "#..", "#.#"     ; %
-    GLYPH ".#.", "#.#", ".#.", "#.#", ".##"     ; &
-    GLYPH ".#.", ".#.", "...", "...", "..."     ; '
-    GLYPH "..#", ".#.", ".#.", ".#.", "..#"     ; (
-    GLYPH "#..", ".#.", ".#.", ".#.", "#.."     ; )
-    GLYPH "...", "#.#", ".#.", "#.#", "..."     ; *
-    GLYPH "...", ".#.", "###", ".#.", "..."     ; +
-    GLYPH "...", "...", "...", ".#.", "#.."     ; ,
-    GLYPH "...", "...", "###", "...", "..."     ; -
-    GLYPH "...", "...", "...", "...", ".#."     ; .
+    GLYPH "...", ".#.", "###", ".#.", "..."     ; + (at .: a dirty build's stamp)
     GLYPH "..#", "..#", ".#.", "#..", "#.."     ; /
     GLYPH "###", "#.#", "#.#", "#.#", "###"     ; 0
     GLYPH ".#.", "##.", ".#.", ".#.", "###"     ; 1
@@ -151,13 +146,16 @@ ZA_AUTO 3, num
     GLYPH "###", "..#", "..#", ".#.", ".#."     ; 7
     GLYPH "###", "#.#", "###", "#.#", "###"     ; 8
     GLYPH "###", "#.#", "###", "..#", "###"     ; 9
-    GLYPH "...", ".#.", "...", ".#.", "..."     ; :
-    GLYPH "...", ".#.", "...", ".#.", "#.."     ; ;
+FONT_DOLLAR = 58
+    GLYPH ".##", "##.", ".#.", ".##", "##."     ; $ (at :)
+    GLYPH "...", "...", "...", ".#.", "#.."     ; , (at ;)
     GLYPH "..#", ".#.", "#..", ".#.", "..#"     ; <
-    GLYPH "...", "###", "...", "###", "..."     ; =
+    GLYPH "...", "...", "###", "...", "..."     ; - (at =)
     GLYPH "#..", ".#.", "..#", ".#.", "#.."     ; >
     GLYPH "###", "..#", ".##", "...", ".#."     ; ?
-    GLYPH ".#.", "#.#", "###", "#..", ".##"     ; @
+FONT_BLANK = 64
+.font_blank
+    GLYPH "...", "...", "...", "...", "..."     ; blank (at @)
     GLYPH ".#.", "#.#", "###", "#.#", "#.#"     ; A
     GLYPH "##.", "#.#", "##.", "#.#", "##."     ; B
     GLYPH ".##", "#..", "#..", "#..", ".##"     ; C
@@ -184,10 +182,9 @@ ZA_AUTO 3, num
     GLYPH "#.#", "#.#", ".#.", "#.#", "#.#"     ; X
     GLYPH "#.#", "#.#", ".#.", ".#.", ".#."     ; Y
     GLYPH "###", "..#", ".#.", "#..", "###"     ; Z
-    \ No text uses [ \ ] ^ or _, so their places hold . ! and ', which
-    \ packed text puts there; from ^ on draw_char shows a space.
-    GLYPH "...", "...", "...", "...", ".#."     ; .
-    GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; !
-    GLYPH ".#.", ".#.", "...", "...", "..."     ; '
+    GLYPH "...", "...", "...", "...", ".#."     ; . (at [)
+    GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; ! (at \)
+    GLYPH ".#.", ".#.", "...", "...", "..."     ; ' (at ])
 .font_end
-ASSERT 32 + (font_end - font) DIV 2 = 94
+FONT_HI = FONT_LO + (font_end - font) DIV 2
+ASSERT FONT_HI = 94 AND FONT_BLANK - FONT_LO = (font_blank - font) DIV 2
