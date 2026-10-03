@@ -227,10 +227,10 @@ MAX_WIND = 20
     RTS                                         ; not a return: a jump
     ZA_CANJUMP go
 .keys
-    EQUB K_RETURN, K_SPACE, K_S, K_B, K_ESCAPE, K_TAB
+    EQUB K_RETURN, K_SPACE, K_S, K_B, K_L, K_Z, K_X, K_ESCAPE, K_TAB
     EQUB K_DOWN, K_UP, K_RIGHT, K_LEFT
 NKEYS = P% - keys
-go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
+go = {fire, fire, shield, battery, lazy, west, east, quit, tab, down, up, right, left}
 .go_lo
     EQUB LO(go - 1)
 .go_hi
@@ -263,6 +263,19 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     JSR raise_shield : BCC release
     JSR snd_click
     JMP release
+.lazy
+    \ A Lazy Boy aims for you, as well as a computer can.
+    LDA #I_LAZY_BOY : JSR inv_index : LDA inv,X : BEQ release
+    DEC inv,X
+    JSR lazy_boy
+    JMP release
+.west
+    LDA #&FF : BNE drive                        ; (always)
+.east
+    LDA #1
+.drive
+    JSR move_tank
+    JMP frame
 .left
     LDX cur : LDA tank_angle,X : CMP #180 : BCS again
     JSR erase_barrel
@@ -303,7 +316,7 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     CLC
     LDY cur : LDA tank_shield,Y : BNE no
     \ the strongest one it owns (inv_index keeps Y)
-    LDY #I_HEAVY
+    LDY #I_SUPER_MAG
 .try
     TYA : JSR inv_index : LDA inv,X : BNE got
     DEY : CPY #I_SHIELD : BCS try
@@ -311,7 +324,15 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
     RTS                                         ; (carry clear)
 .got
     DEC inv,X
-    LDA item_radius,Y : LDY cur : STA tank_shield,Y
+    LDX cur
+    LDA item_radius,Y : STA tank_shield,X
+    \ The mags are the weakest and the strongest.
+    TYA : LDY #0
+    CMP #I_MAG : BEQ mag
+    CMP #I_SUPER_MAG : BNE @+
+.mag
+    DEY
+.@  TYA : STA tank_mag,X
     JSR draw_tank
     SEC
     RTS
@@ -355,29 +376,33 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 {
     LDX cur : LDA tank_weapon,X : STA weapon
     JSR use_weapon
-    \ Tracers leave a trail in the firer's colour; everything else is a
-    \ white dot.
-    LDA #0 : STA shot_trail
+    \ Tracers leave a trail in the firer's colour, smoke tracers one in
+    \ every colour; everything else is a white dot.
+    LDA #0 : STA shot_trail : STA smoke
     LDA #cbyte(C_WHITE) : STA shot_colour
-    LDX weapon : LDA item_kind,X : CMP #SK_TRACER : BNE @+
+    LDX weapon
+    LDA item_radius,X : STA expl_r
+    LDA item_power,X : STA blast_power
+    LDA item_kind,X : CMP #SK_TRACER : BNE @+
     STA shot_trail
+    LDA expl_r : STA smoke                      ; (0 for a plain tracer)
     LDX cur : LDA tank_colour,X : TAX : LDA cbytes,X : STA shot_colour
     BNE shell                                   ; (always: never black)
 .@
-    \ A riot charge has no shell: the blast is round your own turret,
-    \ centred high enough that it barely digs under you.
-    CMP #SK_CHARGE : BNE shell
-    LDA item_radius,X : STA expl_r
-    LSR A : ADC #TANK_H : STA disc_cy                ; (r/2 + TANK_H above...)
-    LDA #0 : STA blast_power
-    LDX cur : LDA tank_x,X : STA disc_cx
-    LDA tank_y,X : SEC : SBC disc_cy                 ; (...the tank's bottom)
-    BCC @+ : CMP #TOP : BCS ok : .@
-    LDA #TOP
-.ok
-    STA disc_cy
-    JSR explosion
+    CMP #SK_CHARGE : BCC shell
+    \ The rest have no shell: they happen at the tank.
+    TAX : JSR at_tank
     JMP kill_dead
+.at_tank
+    LDA at_tank_hi-SK_CHARGE,X : PHA : LDA at_tank_lo-SK_CHARGE,X : PHA
+    RTS                                         ; not a return: a jump
+    ZA_CANJUMP at_tanks
+at_tanks = {riot_charge, dirt_charge, plasma, laser}
+ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
+.at_tank_lo
+    EQUB LO(at_tanks - 1)
+.at_tank_hi
+    EQUB HI(at_tanks - 1)
 .shell
     LDX #MAXSH-1 : LDA #0
 .clear
@@ -461,15 +486,9 @@ go = {fire, fire, shield, battery, quit, tab, down, up, right, left}
 .tank
     LDA tank_alive,X : BEQ next
     \ land on the highest ground under the tank
-    LDA tank_x,X : SEC : SBC #TANK_HALF : TAY
-    LDA #FLOOR : STA land
-    LDX #2*TANK_HALF+1
-.col
-    LDA ground,Y : CMP land : BCS @+ : STA land : .@
-    INY : DEX : BNE col
+    LDA tank_x,X : JSR ground_under : STA land
     LDX cur
-    DEC land                                    ; the row above it
-    LDA land : CMP tank_y,X : BEQ next : BCC next
+    CMP tank_y,X : BEQ next : BCC next
     SBC tank_y,X : STA i                        ; how far it falls
 .fall
     JSR erase_tank

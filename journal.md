@@ -306,3 +306,64 @@ squeezed code: a future change to one of them needs a grep for its users.
 One agent's `pkill -f regress.mjs` killed the others' regression runs in
 their worktrees; they re-ran. Lesson for parallel agents: never kill by
 name.
+
+## The rest of the shop: 41 items, 2403 -> 1294 bytes free
+
+Matt asked for every original weapon that would fit, and for the shop to
+cope with a list longer than the screen. Fourteen items went in, in the
+original's shop order: Smoke Tracer, three Diggers, three Sandhogs, Dirt
+Charge, Plasma Blast, Laser, Lazy Boy, Mag Deflector, Super Mag and Fuel.
+Left out: the Earth Disrupter (dirt never hangs in the air here), the four
+other guidance systems, Auto Defense and Contact Triggers.
+
+- **Room first.** The item tables no longer fitted their holes, and the
+  inventory (6 x 41 bytes) fits no hole at all. Prices and bundles moved
+  to the bottom of the stack page where the inventory had been, kinds to
+  the NMI area, radius and power to the user-defined characters (exactly
+  82 bytes: full), and the inventory into the code. Regress identical.
+- **A trap found on the way.** The copy loop `STA item_price_lo-1,X` is
+  `STA &FF,X`, which baron (correctly) assembles as a zero page store: it
+  wraps inside zero page. Every price read &FF and zero page took a
+  beating, yet a whole computer game ran without a crash - only the
+  shop's $65535 prices gave it away. Y indexing has no zero page store.
+- **Diggers and Sandhogs in a heightmap.** A tunnel can't stay open, so
+  each is a run of small holes, sloping down from the impact, that the
+  dirt above falls straight into: a fan of 3, 5 or 7 collapsing trenches.
+  Sandhog tunnels end in a blast, and stop early under any tank they
+  reach. Holes of radius 4 left one-pixel spikes of dirt between them (a
+  disc's edge columns are only a row deep); radius 6 overlaps cleanly.
+- **The Laser** steps out from the turret about a pixel or a row at a
+  time, plotting in a glow colour so the whole beam flickers, cutting two
+  rows from every column of dirt it crosses (the dirt above drops into the
+  slot) and noting every tank it touches. Damage comes afterwards,
+  power / 8 each, through shields. It only ever rises, so it never meets
+  a column twice below its cut.
+- **Plasma Blast** is the blast animation on your own tank, radius power /
+  16, with your tank briefly marked dead so `damage_tanks` skips it, and
+  no crater. Both it and the laser repaint from the model afterwards; a
+  whole-playfield repaint takes ~40 frames (the tanks vanish meanwhile),
+  so each repaints only the rows it touched.
+- **Mags** push a shell up hard (&A00 a frame against gravity's &198)
+  while it is within 10 pixels and 60 rows above the tank. Because the
+  computers aim with the same flight code, their test shots feel it too
+  and they aim round it for free.
+- **Lazy Boy** enters `ai_turn` at a new label with a pseudo-personality
+  whose wobble is 0: the human gets a Spoiler's aim and watches the turret
+  swing round.
+- **Fuel** first refused every move: each tank stands on a pad dug flat
+  into the slope, so the first pixel either side is a step of several
+  rows. Climbing up to six rows a pixel is allowed.
+- **The shop** first scrolled a line at a time, but redrawing 28 lines
+  takes long enough that held keys were lost. With 40 items it is two
+  pages, the first 28 items and the last 28, flipped when the selection
+  leaves one.
+- Weapon indices all moved, so `tools/regress.mjs` now fires every weapon
+  (74 shots) and its baseline was regenerated. `tools/gallery.mjs` takes
+  weapon names and screenshots each effect three times.
+- A review agent found the one serious bug: a mag only pushed up, so a
+  shell coming straight down over one (a Funky Bomb's bomblet with no
+  sideways speed, in a calm) bounced there for ever, and `fly_shells` had
+  no limit. Mags now push sideways too, away from the tank, and
+  `fly_shells` gives up after MAX_FRAMES as `fly_quiet` does. It also
+  caught Plasma Blast leaving broken shield domes above its repainted
+  rows, and tanks able to drive into each other.

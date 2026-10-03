@@ -23,9 +23,11 @@ NTYPES  = 6
 \ without it two Spoilers either side of one could stalemate for ever.
 \ The first three start at SHOOTER: humans and morons don't aim.
 ASSERT SHOOTER = 2
-.ai_wobble  EQUB 60, 120, 70, 35        ; (20 for a Spoiler was murderous)
-.ai_first   EQUB 0, 1, 2, 2             ; index into ai_angles
-.ai_count   EQUB 1, 1, 4, 4
+\ The last column is a Lazy Boy's: a Spoiler that doesn't spoil.
+LAZY = NTYPES
+.ai_wobble  EQUB 60, 120, 70, 35, 0     ; (20 for a Spoiler was murderous)
+.ai_first   EQUB 0, 1, 2, 2, 2          ; index into ai_angles
+.ai_count   EQUB 1, 1, 4, 4, 4
 .ai_angles  EQUB 70, 50, 45, 65, 80, 30
 
 ZA_AUTO1 ai_target, ai_dir, ai_err
@@ -62,6 +64,10 @@ ZA_AUTO2 ai_power
     ASL A : STA best_power                      ; 2 * (rand + 100)
     TXA : ROL A : STA best_power+1
     JMP swing
+\ A human's Lazy Boy comes in here (lazy_boy).
+.lazy
+    LDA #LAZY : STA type
+    JSR pick_target
 .aimed_type
     LDA #255 : STA best_err
     LDX type : LDA ai_count-SHOOTER,X : STA n
@@ -122,6 +128,9 @@ ZA_AUTO2 ai_power
 .there
     LDA #10 : JMP wait_frames
 }
+
+\ A Lazy Boy aims tank `cur` at the nearest enemy, perfectly.
+lazy_boy = ai_turn.lazy
 
 \ Pick a target: the nearest live enemy, or for a cyborg the weakest.
 \ Sets ai_target and ai_dir (0 right, &FF left).
@@ -243,6 +252,7 @@ ZA_AUTO2 ai_power
     CMP #SK_MISSILE : BEQ ok
     CMP #SK_MIRV : BEQ ok
     CMP #SK_ROLLER : BEQ ok
+    CMP #SK_BURROW : BEQ ok                     ; (it only buys sandhogs)
     CMP #SK_FUNKY : BNE next
 .ok
     LDA w : JSR inv_index : LDA inv,X : BEQ next

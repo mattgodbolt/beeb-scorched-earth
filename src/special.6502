@@ -1,0 +1,294 @@
+\ ***************************************************************************
+\ The weapons that don't fly - charges, the Plasma Blast and the Laser -
+\ and the ones that dig, Diggers and Sandhogs; and driving the tank about.
+\ A charge is fired with expl_r and blast_power already set from the item
+\ table (game.6502's fire).
+\ ***************************************************************************
+
+\ A Riot Charge blows the dirt away from round your own turret, centred
+\ high enough that it barely digs under you.
+.riot_charge
+{
+    LDA expl_r : LSR A : ADC #TANK_H : STA disc_cy   ; (r/2 + TANK_H above...)
+    LDX cur : LDA tank_x,X : STA disc_cx
+    LDA tank_y,X : SEC : SBC disc_cy                 ; (...the tank's bottom)
+    BCC @+ : CMP #TOP : BCS ok : .@
+    LDA #TOP
+.ok
+    STA disc_cy
+    JMP explosion
+}
+
+\ A Dirt Charge throws a ball of dirt out of the turret, to land in front
+\ of the tank: a wall to hide behind, or a lid if it goes straight up.
+.dirt_charge
+{
+    ZA_AUTO1 dist, up
+    LDX cur : LDA tank_angle,X : JSR angle_vec
+    \ its centre is twice the radius out along the barrel, so at 45
+    \ degrees it lands clear of the tank
+    LDA expl_r : ASL A : STA dist
+    LDA vec_up : LDX dist : JSR umul8 : STA up
+    LDX cur : LDA tank_y,X : SEC : SBC #TANK_H : SBC up
+    BCC top : CMP #TOP : BCS @+
+.top
+    LDA #TOP
+.@  STA disc_cy
+    \ (sideways distances are halved: pixels are twice as wide)
+    LDA vec_side : LDX dist : JSR umul8 : LSR A
+    LDX cur : BIT vec_left : BMI left
+    ADC tank_x,X : CMP #SCREEN_W : BCC there    ; (the LSR's carry rounds)
+    LDA #SCREEN_W-1 : BNE there                 ; (always)
+.left
+    EOR #&FF : SEC : ADC tank_x,X : BCS there   ; tank_x - A
+    LDA #0
+.there
+    STA disc_cx
+    JMP dirt_ball
+}
+
+\ Power of tank `cur` / 2^Y -> A. (Power is at most 1000, so Y >= 2 fits.)
+.power_shr
+{
+    ZA_AUTO1 hi
+    LDX cur : LDA tank_power_hi,X : STA hi
+    LDA tank_power_lo,X
+.shift
+    LSR hi : ROR A
+    DEY : BNE shift
+    RTS
+}
+
+\ A Plasma Blast: a ball of energy round your own tank, as big as your
+\ power says, that hurts everyone in it but you. It leaves the ground
+\ alone.
+.plasma
+{
+    LDY #4 : JSR power_shr                      ; radius = power / 16 ...
+    CMP #8 : BCS @+ : LDA #8 : .@               ; ... but at least 8
+    STA expl_r
+    LDX cur : LDA tank_x,X : STA disc_cx
+    LDA tank_y,X : SEC : SBC #2 : STA disc_cy
+    LDA expl_r : JSR snd_explode
+    LDA #0 : STA shields_broke
+    JSR blast
+    \ (with the firer out of the game for a moment, it can't be hurt)
+    LDX cur : DEC tank_alive,X
+    JSR damage_tanks
+    LDX attacker : INC tank_alive,X : STX cur
+    \ The ground is still there: repaint the rows the ball covered.
+    LDA disc_cy : CLC : ADC expl_r : TAX
+    BCS low : CPX #FLOOR : BCC @+
+.low
+    LDX #FLOOR
+.@  \ (and high enough for the domes of any shields it broke)
+    LDA disc_cy : SEC : SBC expl_r
+    BCC high : SBC #SHIELD_R+2
+    BCC high : CMP #TOP : BCS repaint_field
+.high
+    LDA #TOP
+    \ fall through
+}
+
+\ Repaint rows A to X from the model, and the tanks.
+.repaint_field
+    JSR repaint_rows
+    JMP draw_tanks
+
+\ A Laser: a beam straight out of the turret to the edge of the screen. It
+\ cuts a slot through any hill in its way - the dirt above drops into it -
+\ and burns every tank it touches, shield or no shield, by power / 8.
+.laser
+{
+    ZA_AUTO1 hits, n
+    ZA_AUTO2 lx, ly
+    LDY #3 : JSR power_shr : STA blast_power
+    LDA #0 : STA hits : STA n
+    STA lx : STA lx+1 : STA ly : STA ly+1
+    LDX cur : STX shot_owner
+    LDA #UNARMED : STA shot_kind                ; (so tank_at skips the firer)
+    LDA tank_angle,X : JSR angle_vec
+    LSR vec_side                                ; (pixels are twice as wide)
+.step
+    \ (lx, ly) += (cos / 2, sin): about a pixel or a row a step
+    LDA lx : CLC : ADC vec_side : STA lx
+    BCC @+ : INC lx+1 : .@
+    LDA ly : CLC : ADC vec_up : STA ly
+    BCC @+ : INC ly+1 : .@
+    \ row = tank_y - (TANK_H-1) - ly / 256; it rises a row at most per
+    \ step, so it can't jump past TOP
+    LDX cur
+    LDA tank_y,X : SEC : SBC #TANK_H-1 : SBC ly+1
+    CMP #TOP : BCC done
+    TAY
+    \ column = tank_x +- lx / 256, until it leaves the screen
+    LDA tank_x,X
+    BIT vec_left : BPL right
+    SBC lx+1 : BCS column                       ; (carry set by the CMP)
+    BCC done
+.right
+    CLC : ADC lx+1 : BCS done
+.column
+    CMP #SCREEN_W : BCS done
+    TAX
+    TYA : CMP ground,X : BCC air
+    \ In the dirt: cut a slot two rows deep. (The beam only ever rises, so
+    \ it never meets this column lower down.)
+    INC ground,X : INC ground,X
+    BNE next                                    ; (always)
+.air
+    LDA #cbyte(C_HOT) : JSR plot
+    STX shot_x+2 : STY shot_y+2
+    JSR tank_at : BCC next
+    LDX hit_tank : LDA bit,X : ORA hits : STA hits
+.next
+    \ Drawn four steps a frame, so you see it go.
+    INC n : LDA n : AND #3 : BNE step
+    JSR wait_vsync : JSR glow
+    JMP step
+.done
+    JSR snd_fire
+    LDA #24 : STA n
+.burn
+    JSR wait_vsync : JSR glow
+    DEC n : BNE burn
+    JSR glow_off
+    \ Burn everyone it touched, straight through their shields.
+    LDX #0
+.victim
+    STX cur
+    LDA hits : AND bit,X : BEQ spared
+    LDA tank_shield,X : PHA
+    LDA #0 : STA tank_shield,X
+    LDA blast_power : JSR hurt
+    PLA : LDX cur : STA tank_shield,X
+.spared
+    LDX cur : INX : CPX num_players : BNE victim
+    LDX attacker : STX cur : STX explosion.shooter
+    \ The beam and its cuts are all above the firer's tank: repaint that.
+    LDA tank_y,X : TAX : LDA #TOP
+    JSR repaint_field
+    \ The dirt it cut may have been under someone.
+    JMP drop_tanks
+}
+
+\ ---------------------------------------------------------------------------
+\ Diggers and Sandhogs land and burrow: tunnels fan out from where the
+\ shell hit, sloping down into the ground, each a run of small holes that
+\ the dirt above drops into. One that gets under a tank stops there. A
+\ Sandhog's tunnels end in a blast (expl_r, blast_power); a Digger's just
+\ end.
+
+DIG_R     = 6               ; each hole's radius, in rows (smaller ones,
+DIG_STEPS = 6               ; overlapping less, leave spikes of dirt)
+
+.burrow_counts
+FOR i = 0..5
+    EQUB ITEMS[I_DIGGERS + i][6]
+    ASSERT (ITEMS[I_DIGGERS + i][6] AND 1) = 1
+NEXT
+
+.burrow
+{
+    ZA_AUTO1 n, dx, steps
+    LDA cur : STA explosion.shooter             ; (for drop_tanks, below)
+    LDX weapon : LDA burrow_counts-I_DIGGERS,X : STA n
+    \ n tunnels, n odd: they go dx = -(n-1)/2 .. (n-1)/2 pixels a hole
+    LSR A : EOR #&FF : CLC : ADC #1 : STA dx
+.tunnel
+    LDA hit_x : STA disc_cx
+    LDA hit_y : STA disc_cy
+    LDA #DIG_STEPS : STA steps
+.dig
+    LDA disc_cx : CLC : ADC dx
+    CMP #SCREEN_W : BCS end                     ; (off the left wraps too)
+    STA disc_cx
+    LDA disc_cy : ADC #2 : CMP #FLOOR : BCS end ; (carry was clear)
+    STA disc_cy
+    \ A hole: sky on the screen, then out of the model, and the dirt above
+    \ it drops in.
+    LDA #DIG_R : STA disc_r
+    LDA #FILL_SKY : STA fill_mode : JSR fill_disc
+    JSR carve
+    JSR run_falls
+    LDA disc_cx : LDY #TANK_HALF+1 : JSR near_tank : BCS end
+    DEC steps : BNE dig
+.end
+    LDA expl_r : BEQ next                       ; a digger
+    JSR explosion
+.next
+    INC dx
+    DEC n : BNE tunnel
+    JSR draw_tanks                              ; (some holes cut into them)
+    JMP drop_tanks
+}
+
+\ Is column A less than Y columns from the middle of a live tank other
+\ than `cur`? Carry set if so.
+.near_tank
+{
+    ZA_AUTO1 col, reach
+    STA col : STY reach
+    LDX #0
+.loop
+    CPX cur : BEQ next
+    LDA tank_alive,X : BEQ next
+    LDA col : SEC : SBC tank_x,X
+    BCS @+ : EOR #&FF : ADC #1 : .@             ; |dx|
+    CMP reach : BCC yes
+.next
+    INX : CPX num_players : BNE loop
+    CLC
+.yes
+    RTS
+}
+
+\ ---------------------------------------------------------------------------
+\ Driving: Z and X move tank `cur` a pixel left (A = &FF) or right (A = 1)
+\ for a unit of fuel. It can climb MAX_CLIMB rows a pixel, no steeper
+\ (each tank starts on a pad dug flat, so it has a step to climb at
+\ either end); off a cliff it falls, and may be hurt, as any tank would.
+MAX_CLIMB = 6
+
+.move_tank
+{
+    ZA_AUTO1 x, fuel, y
+    LDX cur : CLC : ADC tank_x,X
+    CMP #TANK_HALF+1 : BCC no                   ; (kept on the screen, as
+    CMP #SCREEN_W-TANK_HALF-1 : BCS no          ; place_tanks keeps them)
+    STA x
+    LDY #2*TANK_HALF+2 : JSR near_tank : BCS no ; no driving into tanks
+    LDA #I_FUEL : JSR inv_index : LDA inv,X : BEQ no
+    STX fuel
+    LDA x : JSR ground_under : STA y            ; where it would stand
+    LDX cur : CLC : ADC #MAX_CLIMB : CMP tank_y,X : BCC no    ; too steep
+    LDX fuel : DEC inv,X
+    JSR erase_tank
+    LDX cur : LDA x : STA tank_x,X
+    LDA y : CMP tank_y,X : BCS @+ : STA tank_y,X : .@   ; up: climb
+    JSR draw_tank
+    \ down: it falls
+    LDA cur : STA explosion.shooter
+    JSR drop_tanks
+    \ (a fall may have hurt it, which lowers its maximum power)
+    JSR clamp_power
+    JSR draw_status
+    LDA #3 : JMP wait_frames
+.no
+    RTS
+}
+
+\ The row a tank centred on column A would stand on (one above the highest
+\ ground under it) -> A.
+.ground_under
+{
+    ZA_AUTO1 top
+    SEC : SBC #TANK_HALF : TAY
+    LDA #FLOOR : STA top
+    LDX #2*TANK_HALF+1
+.col
+    LDA ground,Y : CMP top : BCS @+ : STA top : .@
+    INY : DEX : BNE col
+    LDA top : CLC : SBC #0                      ; top - 1
+    RTS
+}

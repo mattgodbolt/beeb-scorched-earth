@@ -50,7 +50,9 @@ SPACE starts.
 | TAB | next weapon you own |
 | SPACE or RETURN | fire |
 | B | use a Battery: +10 health |
-| S | raise a Shield |
+| S | raise your strongest shield |
+| L | use a Lazy Boy: it aims for you |
+| Z / X | drive left / right, a unit of Fuel a pixel |
 | ESCAPE | give up the game |
 
 As in the original, **your maximum power is ten times your health**: a
@@ -70,7 +72,8 @@ round's walls:
 
 ### The shop
 
-Everyone starts with nothing but unlimited Baby Missiles. Damage earns
+Everyone starts with nothing but unlimited Baby Missiles. The shop has
+two pages: move off the bottom of the first to see the rest. Damage earns
 $50 a point, a kill $2,500, winning a round $10,000; everyone is paid
 $2,000 a round, and money in the bank earns about 5%. Prices and bundle
 sizes are the original's. Items you can't afford are shown in red.
@@ -82,16 +85,25 @@ sizes are the original's. Items you can't afford are shown in red.
 | Funky Bomb | bursts and scatters six bomblets |
 | MIRV | splits into five at the top of its arc |
 | Death's Head | splits into nine big ones |
-| Tracer | does nothing, but leaves its path drawn |
-| Baby Roller, Roller, Heavy Roller | roll downhill into a valley, or a tank |
-| Riot Bomb, Heavy Riot Bomb | blow away dirt, hurt nobody |
-| Dirt Clod, Dirt Ball, Ton of Dirt | bury people |
 | Napalm, Hot Napalm | pour burning liquid that runs downhill and pools; anyone standing in it burns |
-| Liquid Dirt | pours like napalm, but sets as ground: fills craters, buries tanks |
+| Tracer | does nothing, but leaves its path drawn |
+| Smoke Tracer | the same, in every colour |
+| Baby Roller, Roller, Heavy Roller | roll downhill into a valley, or a tank |
 | Riot Charge, Riot Blast | no shell: blow the dirt away from round your own turret, to dig out |
+| Riot Bomb, Heavy Riot Bomb | blow away dirt, hurt nobody |
+| Baby Digger, Digger, Heavy Digger | burrow: 3, 5 or 7 tunnels fan out under the ground and the dirt above falls in |
+| Baby Sandhog, Sandhog, Heavy Sandhog | burrow the same way, and each tunnel ends in a blast - under a tank, if it reaches one |
+| Dirt Clod, Dirt Ball, Ton of Dirt | bury people |
+| Liquid Dirt | pours like napalm, but sets as ground: fills craters, buries tanks |
+| Dirt Charge | no shell: throws a ball of dirt out of your turret - a wall in front of you |
+| Plasma Blast | no shell: a ball of energy round your tank, as big as your power, that hurts everyone in it but you |
+| Laser | no shell: a beam to the edge of the screen that cuts through hills and burns every tank it touches, shield or no shield (damage = power / 8) |
+| Lazy Boy | press L: your turret swings round to hit the nearest tank |
 | Parachute | opens by itself when you fall far enough to hurt |
 | Battery | +10 health (press B) |
+| Mag Deflector, Super Mag | shields (40 and 200) that also push shells up and away as they come down over you |
 | Shield, Force Shield, Heavy Shield | soak up 60, 100 or 150 points of damage (S raises your strongest) |
+| Fuel | drive with Z and X |
 
 ![The shop](docs/img/shop.png)
 
@@ -104,11 +116,14 @@ TALK1.CFG when they fire and TALK2.CFG when anyone dies.
 ## What was left out
 
 Scorched Earth is a big game; a 32K machine with 20K of screen gets the
-heart of it. Gone: diggers, sandhogs, lasers and plasma (the
-terrain is a heightmap, so nothing can tunnel - see DESIGN.md), guidance
-systems, fuel and tank movement, simultaneous play, teams, and the
-original's dozens of options. Turned on and fixed: falling dirt, falling
-tanks, random walls, random wind.
+heart of it, and every weapon in the original's shop but the Earth
+Disrupter, which only matters when dirt can hang in the air (here it
+always falls). Diggers and Sandhogs can't leave open tunnels in a
+heightmap (see DESIGN.md), so their tunnels collapse as they go. Gone:
+the guidance systems other than the Lazy Boy, Auto Defense, Contact
+Triggers (everything bursts on contact anyway), simultaneous play, teams,
+and the original's dozens of options. Turned on and fixed: falling dirt,
+falling tanks, random walls, random wind.
 
 ## Building
 

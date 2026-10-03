@@ -180,8 +180,37 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     DEC sub : BNE substep
     \ Wind, once a frame.
     LDA wind_acc : LDX wind_acc+1 : JSR add_vx
+    \ Mags push shells up as they pass over their tanks - not the firer's
+    \ own, which would never get its shells away. Strong enough to turn
+    \ a falling shell round and throw it back up; and sideways too, away
+    \ from the tank, or a shell coming straight down bounces there for ever.
+    LDX #0
+.mag
+    LDA tank_mag,X : BEQ nomag
+    LDA tank_shield,X : BEQ nomag
+    LDA tank_alive,X : BEQ nomag
+    CPX shot_owner : BEQ nomag
+    LDA shot_x+3 : ORA shot_y+3 : BNE nomag     ; off the screen
+    LDY #HI(MAG_SIDE)                           ; (right of it: push right)
+    LDA shot_x+2 : SEC : SBC tank_x,X
+    BCS @+ : EOR #&FF : ADC #1 : LDY #HI(-MAG_SIDE) : .@    ; |dx|
+    CMP #MAG_W : BCS nomag
+    LDA tank_y,X : SEC : SBC shot_y+2 : BCC nomag   ; below it
+    CMP #MAG_H : BCS nomag
+    LDA shot_vy+1 : SEC : SBC #HI(MAG_F) : STA shot_vy+1   ; (LO(MAG_F) = 0)
+    BCS @+ : DEC shot_vy+2 : .@
+    TXA : PHA
+    TYA : TAX : LDA #0 : JSR add_vx             ; (LO(MAG_SIDE) = 0 too)
+    PLA : TAX
+.nomag
+    INX : CPX num_players : BNE mag
     CLC
     RTS
+MAG_W = 10                  ; how far either side it reaches, in pixels
+MAG_H = 60                  ; and how high, in rows
+MAG_F = &A00                ; its push a frame (gravity is &198 a frame)
+MAG_SIDE = &200             ; and sideways (the most wind can do is &5A)
+ASSERT LO(MAG_F) = 0 AND LO(MAG_SIDE) = 0
 }
 
 \ Fly the shell invisibly to wherever it ends up: the computer players'

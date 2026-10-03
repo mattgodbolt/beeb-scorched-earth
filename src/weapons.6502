@@ -7,7 +7,7 @@
 \ in its low nibble, leapfrog hops left in bits 4-5, and bit 7 set until
 \ it has been clear of the tank that fired it.
 SK_MISSILE = 0              ; explode
-SK_TRACER  = 1              ; nothing
+SK_TRACER  = 1              ; nothing (radius: a smoke tracer's first colour)
 SK_ROLLER  = 2              ; roll downhill, then explode
 SK_DIRT    = 3              ; add a ball of dirt
 SK_RIOT    = 4              ; remove a ball of dirt, harm nobody
@@ -17,15 +17,22 @@ SK_LEAP    = 7              ; explode and hop on
 SK_MIRV    = 8              ; split at the top of the arc
 SK_NAPALM  = 9              ; pour fire (napalm.6502)
 SK_LIQUID  = 10             ; pour dirt (napalm.6502)
-SK_CHARGE  = 11             ; no shell: clear the dirt round your own turret
-SK_ITEM    = 15             ; not a weapon at all
+SK_BURROW  = 11             ; tunnel, then (sandhogs) explode
+\ These never fly: they happen at the tank that fires them.
+SK_CHARGE  = 12             ; clear the dirt round your own turret
+SK_DCHARGE = 13             ; throw dirt out of your own turret
+SK_PLASMA  = 14             ; a blast round your own tank that spares it
+SK_LASER   = 15             ; a beam from the turret
+SK_ITEM    = &FF            ; not a weapon at all
 UNARMED    = &80
 HOP        = &10
 
-\ Items, by inventory index (after the weapons).
+\ Items, by inventory index (after the weapons), in the original's order.
 \ name, kind, radius (rows), blast power, price ($), bundle, split count
 \ (for napalm and liquid dirt, "radius" is how many units are poured and
-\ "power" the damage a unit of fire does to a tank standing in it)
+\ "power" the damage a unit of fire does to a tank standing in it; for
+\ diggers and sandhogs, "split" is how many tunnels, and radius and power
+\ are the blast at the end of each; for shields, radius is the strength)
 ITEMS = {
     {"BABY MISSILE",    SK_MISSILE,  6,  40,   400, 10, 0},
     {"MISSILE",         SK_MISSILE, 10,  90,  1875,  5, 0},
@@ -35,44 +42,70 @@ ITEMS = {
     {"FUNKY BOMB",      SK_FUNKY,   12,  80,  7000,  2, 0},
     {"MIRV",            SK_MIRV,    10,  90, 10000,  3, 5},
     {"DEATH'S HEAD",    SK_MIRV,    16, 120, 20000,  1, 9},
+    {"NAPALM",          SK_NAPALM,  70,   2, 10000, 10, 0},
+    {"HOT NAPALM",      SK_NAPALM, 120,   3, 20000,  2, 0},
     {"TRACER",          SK_TRACER,   0,   0,    10, 20, 0},
+    {"SMOKE TRACER",    SK_TRACER,   7,   0,   500, 10, 0},
     {"BABY ROLLER",     SK_ROLLER,   6,  60,  5000, 10, 0},
     {"ROLLER",          SK_ROLLER,  10,  90,  6000,  5, 0},
     {"HEAVY ROLLER",    SK_ROLLER,  18, 120,  6750,  2, 0},
+    {"RIOT CHARGE",     SK_CHARGE,  12,   0,  2000, 10, 0},
+    {"RIOT BLAST",      SK_CHARGE,  20,   0,  5000,  5, 0},
     {"RIOT BOMB",       SK_RIOT,    14,   0,  5000,  5, 0},
     {"HEAVY RIOT BOMB", SK_RIOT,    22,   0,  4750,  2, 0},
+    {"BABY DIGGER",     SK_BURROW,   0,   0,  3000, 10, 3},
+    {"DIGGER",          SK_BURROW,   0,   0,  2500,  5, 5},
+    {"HEAVY DIGGER",    SK_BURROW,   0,   0,  6750,  2, 7},
+    {"BABY SANDHOG",    SK_BURROW,   7,  50, 10000, 10, 3},
+    {"SANDHOG",         SK_BURROW,   9,  60, 16750,  5, 5},
+    {"HEAVY SANDHOG",   SK_BURROW,  11,  70, 25000,  2, 7},
     {"DIRT CLOD",       SK_DIRT,     8,   0,  5000, 10, 0},
     {"DIRT BALL",       SK_DIRT,    14,   0,  5000,  5, 0},
     {"TON OF DIRT",     SK_DIRT,    24,   0,  6750,  2, 0},
-    {"NAPALM",          SK_NAPALM,  70,   2, 10000, 10, 0},
-    {"HOT NAPALM",      SK_NAPALM, 120,   3, 20000,  2, 0},
     {"LIQUID DIRT",     SK_LIQUID, 100,   0,  5000, 10, 0},
-    {"RIOT CHARGE",     SK_CHARGE,  12,   0,  2000, 10, 0},
-    {"RIOT BLAST",      SK_CHARGE,  20,   0,  5000,  5, 0},
+    {"DIRT CHARGE",     SK_DCHARGE, 16,   0,  5000,  5, 0},
+    {"PLASMA BLAST",    SK_PLASMA,   0, 100,  9000,  5, 0},
+    {"LASER",           SK_LASER,    0,   0,  5000,  5, 0},
+    {"LAZY BOY",        SK_ITEM,     0,   0, 20000,  2, 0},
     {"PARACHUTE",       SK_ITEM,     0,   0, 10000,  8, 0},
     {"BATTERY",         SK_ITEM,     0,   0,  5000, 10, 0},
+    {"MAG DEFLECTOR",   SK_ITEM,    40,   0, 10000,  2, 0},
     {"SHIELD",          SK_ITEM,    60,   0, 20000,  3, 0},
     {"FORCE SHIELD",    SK_ITEM,   100,   0, 25000,  3, 0},
-    {"HEAVY SHIELD",    SK_ITEM,   150,   0, 30000,  2, 0}
+    {"HEAVY SHIELD",    SK_ITEM,   150,   0, 30000,  2, 0},
+    {"SUPER MAG",       SK_ITEM,   200,   0, 40000,  2, 0},
+    {"FUEL",            SK_ITEM,     0,   0, 10000, 99, 0}
 }
-NITEMS     = LEN(ITEMS)
-NWEAPONS   = NITEMS - 5
-I_PARACHUTE = NWEAPONS
-I_BATTERY   = NWEAPONS + 1
-I_SHIELD    = NWEAPONS + 2  ; then FORCE SHIELD and HEAVY SHIELD: a
-I_HEAVY     = NWEAPONS + 4  ; shield's strength is its "radius"
+NITEMS      = LEN(ITEMS)
+NWEAPONS    = NITEMS - 9
+I_LAZY_BOY  = NWEAPONS
+I_PARACHUTE = NWEAPONS + 1
+I_BATTERY   = NWEAPONS + 2
+I_SHIELD    = NWEAPONS + 3  ; the shields, weakest first: MAG DEFLECTOR,
+I_MAG       = I_SHIELD      ; SHIELD, FORCE SHIELD, HEAVY SHIELD and
+I_SUPER_MAG = NWEAPONS + 7  ; SUPER MAG. The two mags push shells away too.
+I_FUEL      = NWEAPONS + 8
+ASSERT I_FUEL = NITEMS - 1 AND ITEMS[NWEAPONS][1] = SK_ITEM AND ITEMS[NWEAPONS-1][1] <> SK_ITEM
+ASSERT ITEMS[I_MAG][0] = "MAG DEFLECTOR" AND ITEMS[I_SUPER_MAG][0] = "SUPER MAG"
 \ Only these two split, so `split` picks between them rather than keep a
 \ table of split counts that is nearly all zeros.
 I_MIRV        = 6
 I_DEATHS_HEAD = 7
+ASSERT ITEMS[I_MIRV][1] = SK_MIRV AND ITEMS[I_DEATHS_HEAD][1] = SK_MIRV
+\ Diggers and sandhogs, all six together; their tunnel counts are odd.
+I_DIGGERS = 19
+FOR i = 0..NITEMS-1
+    ASSERT (ITEMS[i][1] = SK_BURROW) = (i >= I_DIGGERS AND i < I_DIGGERS + 6)
+    ASSERT ITEMS[i][6] = 0 OR i = I_MIRV OR i = I_DEATHS_HEAD OR ITEMS[i][1] = SK_BURROW
+NEXT
+\ Other indices the code needs, checked against the table.
+I_ROLLER = 13 : I_HEAVY_ROLLER = 14 : I_SANDHOG = 23 : I_FORCE = I_SHIELD + 2
+ASSERT ITEMS[I_ROLLER][0] = "ROLLER" AND ITEMS[I_HEAVY_ROLLER][0] = "HEAVY ROLLER"
+ASSERT ITEMS[I_SANDHOG][0] = "SANDHOG" AND ITEMS[I_FORCE][0] = "FORCE SHIELD"
 \ Inventory: inv[inv_base[player] + item]. (No hole below &0E00 is big
 \ enough for it any more.)
 .inv_base       EQUB (0..MAXP-1) * NITEMS
 .inv            SKIP MAXP * NITEMS
-ASSERT ITEMS[I_MIRV][1] = SK_MIRV AND ITEMS[I_DEATHS_HEAD][1] = SK_MIRV
-FOR i = 0..NITEMS-1
-    ASSERT ITEMS[i][6] = 0 OR i = I_MIRV OR i = I_DEATHS_HEAD
-NEXT
 
 .item_names
 FOR i = 0..NITEMS-1
@@ -148,6 +181,7 @@ NEXT
 
 
 ZA_AUTO1 weapon             ; the weapon being fired
+ZA_AUTO1 smoke              ; a smoke tracer's colour, else 0
 ZA_AUTO1 shell_i            ; the shell being worked on
 
 \ Copy shell X into the zero page block.
@@ -198,6 +232,8 @@ ZA_AUTO1 shell_i            ; the shell being worked on
 .fly_shells
 {
     ZA_AUTO1 any, i
+    ZA_AUTO2 frames
+    LDA #0 : STA frames : STA frames+1
 .frame
     LDA #0 : STA any : STA i
 .shell_loop
@@ -220,6 +256,17 @@ ZA_AUTO1 shell_i            ; the shell being worked on
 .next
     INC i : LDA i : CMP #MAXSH : BNE shell_loop
     LDA any : BEQ done
+    \ Give up on anything still flying after MAX_FRAMES, as fly_quiet does:
+    \ a shell kept in the air somehow (a mag by a rubber wall?) mustn't
+    \ hang the game.
+    INC frames : BNE @+ : INC frames+1 : .@
+    LDA frames+1 : CMP #HI(MAX_FRAMES) : BCS done
+    \ A smoke tracer's trail changes colour every frame: smoke counts
+    \ 7 down to 1, round and round (0 for anything else).
+    LDX smoke : BEQ plain
+    DEX : BNE @+ : LDX #7 : .@
+    STX smoke : LDA cbytes,X : STA shot_colour
+.plain
     JSR wait_vsync
     JSR draw_shells
     JSR flight_sound
@@ -321,8 +368,8 @@ SPREAD = 2200
     RTS                                         ; not a return: a jump
     ZA_CANJUMP landings
 \ What each SK_ kind does, in order. (Riot Charges never fly.)
-landings = {explosion, none, roller, dirt_ball, explosion, funky, bomblet, leap, explosion, napalm, liquid_dirt}
-ASSERT LEN(landings) = SK_LIQUID + 1 AND SK_CHARGE > SK_LIQUID
+landings = {explosion, none, roller, dirt_ball, explosion, funky, bomblet, leap, explosion, napalm, liquid_dirt, burrow}
+ASSERT LEN(landings) = SK_BURROW + 1 AND SK_CHARGE = SK_BURROW + 1
 .land_lo
     EQUB LO(landings - 1)
 .land_hi

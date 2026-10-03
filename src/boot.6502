@@ -17,10 +17,12 @@
 .tape
     LDA low_tape_payload-1,X : STA sintab-1,X
     DEX : BNE tape
-    LDX #low_stack_end - item_price_lo
+    \ (Indexed by Y: item_price_lo-1 is &FF, and STA &FF,X is a zero page
+    \ store that wraps round inside zero page.)
+    LDY #low_stack_end - item_price_lo
 .stack
-    LDA low_stack_payload-1,X : STA item_price_lo-1,X
-    DEX : BNE stack
+    LDA low_stack_payload-1,Y : STA item_price_lo-1,Y
+    DEY : BNE stack
     LDX #low_udg_end - item_radius
 .udg
     LDA low_udg_payload-1,X : STA item_radius-1,X

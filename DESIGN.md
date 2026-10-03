@@ -35,8 +35,9 @@ by the hole's height. Dirt bombs add a disc in the air, which falls onto the
 surface. Both are "a block of dirt in this column falls by d", animated two
 pixels per column per step.
 
-What it costs: no tunnels, so no Diggers, Sandhogs, or tunnelling shots.
-Everything explodes on contact.
+What it costs: no open tunnels. Diggers and Sandhogs burrow as a run of
+small holes that the dirt above falls straight into, and the Laser's slot
+closes the same way. Everything explodes on contact.
 
 Sky and dirt colours come from per-row tables (`skyrow`, `dirtrow`), so a
 dithered gradient sky or striped strata cost nothing to draw and anything can
@@ -96,13 +97,18 @@ Kept, because a heightmap and contact detonation can do them:
 | Tracer | flies, draws its path, does nothing |
 | Dirt Clod, Dirt Ball, Ton of Dirt | add dirt |
 | Riot Bomb, Heavy Riot Bomb | carve dirt, no damage |
-| Napalm (stretch) | fire flows downhill along the heightmap |
+| Napalm, Hot Napalm, Liquid Dirt | liquid flows downhill along the heightmap and pools |
 
-Items: Parachute, Battery, Shield.
+Added once memory allowed (see journal.md): Smoke Tracer, Riot Charge and
+Blast, Diggers and Sandhogs (collapsing tunnels), Dirt Charge, Plasma
+Blast, Laser.
 
-Dropped: Diggers and Sandhogs (no tunnels), Laser and Plasma, guidance
-systems, Mag Deflectors, fuel and tank movement, simultaneous and synchronous
-modes, teams. Some may come back if there is room.
+Items: Lazy Boy (the computers' aiming, for a human), Parachute, Battery,
+Mag Deflector, Shield, Force Shield, Heavy Shield, Super Mag, Fuel.
+
+Dropped: the Earth Disrupter (dirt never hangs in the air), the other
+guidance systems, Auto Defense, Contact Triggers, simultaneous and
+synchronous modes, teams.
 
 ### Economy
 

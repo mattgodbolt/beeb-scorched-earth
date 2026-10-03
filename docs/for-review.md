@@ -38,11 +38,21 @@ and open questions so far:
 - **Turn order.** Rotates each round; the original defaults to random.
 - **Shields** absorb 60 damage then go; no deflection, no shield-on-
   direct-hit rule.
-- **Missing weapons and items**: diggers, sandhogs, lasers, plasma,
-  guidance, fuel/movement, contact triggers, mag deflectors, Super
-  Mag. (Napalm, Hot Napalm, Liquid Dirt, Riot Charge, Riot Blast, Force
-  and Heavy Shields went in after the memory team freed space. Our
-  shields only soak damage; the original's Force Shield also deflects.)
+- **Missing weapons and items**: Earth Disrupter, Heat/Ballistic/
+  Horizontal/Vertical Guidance, Auto Defense, Contact Trigger. Everything
+  else in the original's shop is in. Our shields only soak damage; the
+  original's Force Shield also deflects.
+- **Reinterpreted for a heightmap**: Diggers and Sandhogs (fans of 3/5/7
+  collapsing tunnels; sandhog tunnels end in a blast, or under the first
+  tank they reach); the Laser (cuts 2 rows from each column it crosses,
+  damage = power / 8 through shields - the original's Super Mag is meant
+  to stop it, ours doesn't); Plasma Blast (radius = power / 16, the firer
+  immune, no crater); Dirt Charge (a ball of dirt 2r out along the
+  barrel); Mags (push shells up within 10 px and 60 rows); Lazy Boy (a
+  perfect Spoiler, nearest target - the original lets you choose); Fuel
+  (99 units for $10,000, a unit a pixel, climbs up to 6 rows a pixel, no
+  extra cost uphill).
+- **Shop**: two pages of 28. A key pressed while a page redraws is lost.
 - **Napalm strength**: 70 units x 2 damage (Hot: 120 x 3). Firing it into
   your own valley kills you, as it should; tune once played.
 

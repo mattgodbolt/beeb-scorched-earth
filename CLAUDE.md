@@ -16,7 +16,7 @@ node tools/regress.mjs build/regress.txt && diff tools/regress.baseline.txt buil
 ```
 
 `tools/regress.mjs` is the check for any change meant to preserve
-behaviour (refactors, size savings): 59 deterministic shots, each hashed.
+behaviour (refactors, size savings): 74 deterministic shots, each hashed.
 If behaviour changes on purpose, regenerate the baseline and say so in the
 commit.
 
@@ -94,6 +94,9 @@ Never assume a change worked: `make`, run it, look.
 - `HIT_GROUND` is 0: `LDX #HIT_GROUND : BNE x` never branches.
 - An `RTS` with "carry set means short" needs the `SEC` *after* any `SBC`
   that computed the return value.
+- `STA label-1,X` with `label` at &0100 is `STA &FF,X`: baron picks the
+  zero page form, which wraps round inside zero page. Index by Y (no
+  `zp,Y` store exists) or count upwards from the label itself.
 - `draw_char` (and most routines) trash A: `JSR draw_char : JSR draw_char`
   does not print a character twice.
 

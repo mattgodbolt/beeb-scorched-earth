@@ -3,7 +3,8 @@
 // for the human's turn, take the Spoiler off the board and fire, so the
 // round ends; then give the human $50000 and buy something.
 // Screenshots: shots/sh0.png (scores), sh1.png (shop), sh2.png (after
-// moving down twice and buying).
+// moving down twice and buying), sh3.png (scrolled to the end), sh4.png
+// (scrolled back up).
 import { startBeeb } from "./beeb.mjs";
 
 const b = await startBeeb({ disc: "build/scorch.ssd", bootSecs: 5 });
@@ -28,5 +29,10 @@ await b.tap("DOWN"); await b.run(0.3);
 await b.tap("DOWN"); await b.run(0.3);
 await b.tap("RETURN"); await b.run(0.5);
 await b.shot("shots/sh2.png");
+// Scroll to the bottom of the list and back up past the top of the window.
+for (let i = 0; i < 42; i++) { await b.tap("DOWN", 0.05); await b.run(0.15); }
+await b.shot("shots/sh3.png");
+for (let i = 0; i < 30; i++) { await b.tap("UP", 0.05); await b.run(0.15); }
+await b.shot("shots/sh4.png");
 await b.close();
 process.exit(0);

@@ -411,13 +411,16 @@ ENDMACRO
     CPX #NITEMS-1 : BEQ key
     INC menu_sel
 .moved
-    \ The selection moves a line at a time, so if it leaves the window
-    \ the list scrolls one line after it.
-    LDA menu_sel : SEC : SBC shop_top : BCC scroll_up
+    \ Two pages: the first SHOP_ROWS items and the last. Leaving one for
+    \ the other redraws the list. (A line at a time redrew it so often
+    \ that keys were lost while it did.)
+    LDA menu_sel : SEC : SBC shop_top : BCC flip_up
     CMP #SHOP_ROWS : BCC seen
-    INC shop_top : BNE redraw                   ; (always)
-.scroll_up
-    DEC shop_top : BNE redraw                   ; (always: it was 2 or more)
+    LDA #NITEMS-SHOP_ROWS : BNE flipped         ; (always)
+.flip_up
+    LDA #1
+.flipped
+    STA shop_top : BNE redraw                   ; (always)
 .seen
     TXA : JSR shop_line                         ; un-highlight the old line
     LDA menu_sel : JSR shop_line
@@ -431,8 +434,9 @@ ENDMACRO
 }
 
 \ The shop lists SHOP_ROWS items at a time, from item shop_top, on lines 2
-\ onwards: the footer is on line 30.
+\ onwards: the footer is on line 30. Two pages show every item.
 SHOP_ROWS = 28
+ASSERT NITEMS - 1 <= 2 * SHOP_ROWS
 ZA_AUTO1 shop_top
 
 \ Draw shop line A (an item), if it is scrolled into view: highlighted if
@@ -504,7 +508,9 @@ ZA_AUTO1 shop_top
     RTS
 }
 .ai_likes
-    EQUB 1, 1, 2, 3, 4, 5, 6, 7, 10, 11, I_PARACHUTE, I_BATTERY, I_SHIELD
+    EQUB 1, 1, 2, 3, 4, 5, 6, 7, I_ROLLER, I_HEAVY_ROLLER, I_SANDHOG
+    EQUB I_PARACHUTE, I_BATTERY, I_MAG, I_SHIELD + 1, I_FORCE
+ASSERT P% - ai_likes <= 16
 .ai_likes_end
 
 \ ---------------------------------------------------------------------------

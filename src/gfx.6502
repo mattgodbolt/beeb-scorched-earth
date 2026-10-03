@@ -70,8 +70,13 @@ ZA_AUTO1 span_x0, span_x1
 \ status bar's model is black sky, so this clears that too. FLOOR is past
 \ the right edge, which repaint clips.
 .draw_terrain
-    LDA #0 : STA bg_y0 : STA rect_x0
-    LDA #FLOOR : STA bg_y1 : STA rect_x1
+    LDA #0 : LDX #FLOOR
+\ Repaint rows A to X, the whole width. (A whole screen's worth takes
+\ most of a second.)
+.repaint_rows
+    STA bg_y0 : STX bg_y1
+    LDA #0 : STA rect_x0
+    LDA #FLOOR : STA rect_x1
     \ fall through
 
 \ Repaint a rectangle from the model: pixels rect_x0..rect_x1 (clipped
