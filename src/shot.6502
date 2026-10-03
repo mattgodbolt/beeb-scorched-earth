@@ -56,7 +56,7 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDA #POWER_MUL : JSR mul16
     LDA mul16.r : STA mul16.m
     LDA mul16.r+1 : STA mul16.m+1
-    LDX cur : LDA tank_angle,X : JSR angle_vec
+    JSR cur_angle_vec
     \ vy = -(speed * sin) / 256
     LDA vec_up : JSR mul16
     LDX #4 : SEC : JSR set_vel
@@ -74,6 +74,10 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDX weapon : LDA item_kind,X : ORA #UNARMED : STA shot_kind
     RTS
 }
+
+\ angle_vec for tank `cur`'s angle.
+.cur_angle_vec
+    LDX cur : LDA tank_angle,X : JMP angle_vec
 
 \ Velocity X (0 = vx, 4 = vy) = mul16.r / 256, negated if carry is set.
 .set_vel

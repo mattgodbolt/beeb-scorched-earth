@@ -33,7 +33,7 @@ NEXT
 .dirt_charge
 {
     ZA_AUTO1 dist
-    LDX cur : LDA tank_angle,X : JSR angle_vec
+    JSR cur_angle_vec
     \ its centre is twice the radius out along the barrel, so at 45
     \ degrees it lands clear of the tank
     LDA expl_r : ASL A : STA dist
@@ -52,7 +52,8 @@ NEXT
     JMP dirt_ball
 }
 
-\ Power of tank `cur` / 2^Y -> A. (Power is at most 1000, so Y >= 2 fits.)
+\ Power of tank `cur` / 2^Y -> A, and X = cur. (Power is at most 1000,
+\ so Y >= 2 fits.)
 .power_shr
 {
     ZA_AUTO1 hi
@@ -107,11 +108,11 @@ NEXT
     ZA_AUTO1 hits, n
     ZA_AUTO2 lx, ly
     LDY #3 : JSR power_shr : STA blast_power
+    STX shot_owner                              ; (power_shr leaves X = cur)
     LDA #0 : STA hits : STA n
     STA lx : STA lx+1 : STA ly : STA ly+1
-    LDX cur : STX shot_owner
     LDA #UNARMED : STA shot_kind                ; (so tank_at skips the firer)
-    LDA tank_angle,X : JSR angle_vec
+    JSR cur_angle_vec
     LSR vec_side                                ; (pixels are twice as wide)
 .step
     \ (lx, ly) += (cos / 2, sin): about a pixel or a row a step

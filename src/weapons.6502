@@ -242,19 +242,19 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     LDX i : LDA sh_active,X : BEQ next
     JSR load_shell
     JSR shell_frame
-    BCC moved
-    \ It landed: take its dot away and let the weapon do its thing.
-    LDX i : LDA #0 : STA sh_active,X
-    JSR undraw_shell
-    JSR land
-    JMP next
-.moved
+    BCS landed
     JSR save_shell
     INC any
     \ MIRVs split once they start to fall.
     LDA shot_kind : AND #15 : CMP #SK_MIRV : BNE next
     LDA shot_vy+2 : BMI next
     JSR split
+    BEQ next                                    ; (always: split ends Z set)
+.landed
+    \ It landed: take its dot away and let the weapon do its thing.
+    LDX i : LDA #0 : STA sh_active,X
+    JSR undraw_shell
+    JSR land
 .next
     INC i : LDA i : CMP #MAXSH : BNE shell_loop
     LDA any : BEQ done
@@ -338,7 +338,7 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     LDA #LO(SPREAD) : LDY #HI(SPREAD) : JSR add_vx
     JSR spawn_shell
     DEC n : BNE more
-    RTS
+    RTS                                         ; (Z set: fly_shells needs it)
 SPREAD = 2200
 }
 
