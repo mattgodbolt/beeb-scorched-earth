@@ -56,7 +56,7 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDA #POWER_MUL : JSR mul16
     LDA mul16.r : STA mul16.m
     LDA mul16.r+1 : STA mul16.m+1
-    LDX cur : LDA tank_angle,X : JSR angle_vec
+    JSR cur_angle_vec
     \ vy = -(speed * sin) / 256
     LDA vec_up : JSR mul16
     LDX #4 : SEC : JSR set_vel
@@ -74,6 +74,10 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     LDX weapon : LDA item_kind,X : ORA #UNARMED : STA shot_kind
     RTS
 }
+
+\ angle_vec for tank `cur`'s angle.
+.cur_angle_vec
+    LDX cur : LDA tank_angle,X : JMP angle_vec
 
 \ Velocity X (0 = vx, 4 = vy) = mul16.r / 256, negated if carry is set.
 .set_vel
@@ -93,12 +97,13 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
 .vel_done
     RTS
 
-\ shot_vx += X:A, a signed 16-bit amount.
+\ shot_vx += Y:A, a signed 16-bit amount. Preserves X (the mags rely on
+\ it).
 .add_vx
-    LDY #0 : CPX #&80 : BCC @+ : DEY : .@       ; Y = its sign
     CLC : ADC shot_vx : STA shot_vx
-    TXA : ADC shot_vx+1 : STA shot_vx+1
-    TYA : ADC shot_vx+2 : STA shot_vx+2
+    TYA : ADC shot_vx+1 : STA shot_vx+1
+    TYA : AND #&80 : BPL @+ : LDA #&FF : .@     ; its sign (carry kept)
+    ADC shot_vx+2 : STA shot_vx+2
     RTS
 
 \ 16x8 multiply: mul16.m * A -> mul16.r (24 bits). Preserves Y.
@@ -179,7 +184,7 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
 .next
     DEC sub : BNE substep
     \ Wind, once a frame.
-    LDA wind_acc : LDX wind_acc+1 : JSR add_vx
+    LDA wind_acc : LDY wind_acc+1 : JSR add_vx
     \ Mags push shells up as they pass over their tanks - not the firer's
     \ own, which would never get its shells away. Strong enough to turn
     \ a falling shell round and throw it back up; and sideways too, away
@@ -199,9 +204,7 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     CMP #MAG_H : BCS nomag
     LDA shot_vy+1 : SEC : SBC #HI(MAG_F) : STA shot_vy+1   ; (LO(MAG_F) = 0)
     BCS @+ : DEC shot_vy+2 : .@
-    TXA : PHA
-    TYA : TAX : LDA #0 : JSR add_vx             ; (LO(MAG_SIDE) = 0 too)
-    PLA : TAX
+    LDA #0 : JSR add_vx                         ; (LO(MAG_SIDE) = 0 too)
 .nomag
     INX : CPX num_players : BNE mag
     CLC
@@ -270,12 +273,13 @@ ASSERT LO(MAG_F) = 0 AND LO(MAG_SIDE) = 0
 .right
     LDY #SCREEN_W-1                             ; or right
 .crossed
-    LDA wall_type : BEQ open
-    CMP #WALL_WRAP : BEQ wrap
+    ASSERT WALL_NONE = 0 AND WALL_WRAP = 1 AND WALL_RUBBER = 2
+    LDX wall_type : BEQ open
+    DEX : BEQ wrap
     \ Rubber and concrete both put it back on the edge column.
-    STY shot_x+2 : LDX #0 : STX shot_x+3
-    CMP #WALL_RUBBER : BNE concrete
-    JSR negate_vel                              ; bounce (X = 0: vx)
+    STY shot_x+2 : LDA #0 : STA shot_x+3
+    DEX : BNE concrete
+    TAX : JSR negate_vel                        ; bounce (X = 0: vx)
     CLC : RTS
 .concrete
     \ Bursts on the wall - unless it went over the top of the screen.

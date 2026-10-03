@@ -21,7 +21,7 @@ ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
 .pour
 {
     ZA_AUTO1 n, x, lv, left, right, dir
-    ROR A : STA pour_fire
+    ROR pour_fire                               ; (only bit 7 is read)
     LDA expl_r : STA n
     LDX #SCREEN_W : LDA #0
 .clear
@@ -64,8 +64,7 @@ ZA_AUTO1 pour_top, pour_lo, pour_hi     ; the area the liquid covered
     LDA right : CMP lv : BNE settle
     BEQ goright
 .flatleft
-    LDA left : CMP lv : BNE settle
-    BEQ goleft
+    LDA left : CMP lv : BEQ goleft
 .settle
     INC liquid,X
     LDY lv : DEY                                ; the new top row
