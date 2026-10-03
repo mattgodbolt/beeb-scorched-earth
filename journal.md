@@ -367,3 +367,12 @@ other guidance systems, Auto Defense and Contact Triggers.
   `fly_shells` gives up after MAX_FRAMES as `fly_quiet` does. It also
   caught Plasma Blast leaving broken shield domes above its repainted
   rows, and tanks able to drive into each other.
+- **Leapfrog crashed the machine**, and shipped that way. Its kind byte
+  carries its hops in bits 4-5 (39), so the new "no shell" test in `fire`
+  (kind >= SK_CHARGE) sent it through the charge dispatch, off the end of
+  the table and into a BRK. Neither test caught it: the computers never
+  choose a Leapfrog, and the regress hashed whatever state the crash left
+  - so the baseline recorded the crash, and even the build stamp moved
+  those hashes. One of the space-saving agents spotted it. The fix masks
+  the kind; `tools/regress.mjs` now watches for BRK and writes "BRK"
+  instead of a hash.

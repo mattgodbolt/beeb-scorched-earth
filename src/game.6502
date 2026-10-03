@@ -389,7 +389,9 @@ go = {fire, fire, shield, battery, lazy, west, east, quit, tab, down, up, right,
     LDX cur : LDA tank_colour,X : TAX : LDA cbytes,X : STA shot_colour
     BNE shell                                   ; (always: never black)
 .@
-    CMP #SK_CHARGE : BCC shell
+    \ (Leapfrog's kind has its hops in bits 4-5: without the AND it looked
+    \ like a charge, and jumped off the end of the table below.)
+    AND #15 : CMP #SK_CHARGE : BCC shell
     \ The rest have no shell: they happen at the tank.
     TAX : JSR at_tank
     JMP kill_dead
