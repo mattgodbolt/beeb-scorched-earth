@@ -376,3 +376,30 @@ other guidance systems, Auto Defense and Contact Triggers.
   those hashes. One of the space-saving agents spotted it. The fix masks
   the kind; `tools/regress.mjs` now watches for BRK and writes "BRK"
   instead of a hash.
+
+## Third pass: 1292 -> 2085 bytes free, nothing given up
+
+Four agents again, on disjoint files, gated on an exact regress match
+plus screen-memory comparisons for anything the regress doesn't drive.
+
+- **Graphics/data placement (+425)**: `pixaddr` computes (x>>1)*8 itself,
+  so the 320-byte column tables went and the inventory moved into their
+  place; `repaint` adds a per-column offset, which made a full repaint
+  faster. The font, number tables, colour bytes and AI tables moved below
+  &0E00. Those holes are now essentially full.
+- **Text (+217)**: item names packed like the rest of the text, then all
+  text repacked at five bits a character (an escape for digits and
+  rarer punctuation), and the glyphs no text reaches dropped. Packed
+  names made the shop slow - each lookup unpacked every name before it -
+  so `print_item_name` remembers where the next name starts.
+- **Weapons/flight (+102)** and **game/explode/tank (+54)**: fall-throughs,
+  shared `above_tank` and `cur_angle_vec`, the laser hurting through
+  `hurt.unshielded`, `add_vx` keeping X.
+- Each branch fitted alone, but merged together the allocator ran out of
+  zero page: `tank_colour`, the per-player array with fewest accesses,
+  went back out of zero page into the bytes `sh_oldy` (now unused) had.
+- The game/explode agent found Leapfrog crashing the machine (see above).
+- The data agent hit a baron bug: a FUNCTION called at the same byte
+  offset in two files shared one call frame, so the second call saw the
+  first's arguments. Another agent reduced it to four lines and filed it
+  upstream with a fix (waitingforvsync/baron#10, #11).

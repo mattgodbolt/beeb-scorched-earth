@@ -58,8 +58,13 @@ Never assume a change worked: `make`, run it, look.
   it may be called after the first round starts.
 - `lowdata.6502` holds constant tables that live in RAM holes below
   &0E00 (copied there by `boot`); `memory.6502` holds everything mutable.
-- On-screen text is `PACKED "..."` (6 bits a character, ASCII 32-94
-  only); `print_at`/`PRINT_AT` take colour and position inline.
+- On-screen text, item names included, is `PACKED "..."`: 5 bits a
+  character for letters, space and `. ! '`, with an escape for digits
+  and the rest; only characters the font has (PACKED refuses others).
+  `print_at`/`PRINT_AT` take colour and position inline.
+- Constant tables live below &0E00 wherever they fit (the font among
+  them), and those holes are nearly full: freeing space there comes
+  before moving another table down.
 
 - `src/memory.6502` lays out every table and per-player array in guarded
   sections. **Never hand-place an address**: two overlaps happened before

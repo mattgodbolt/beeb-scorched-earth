@@ -13,16 +13,15 @@ stack_low_guard = &01A8
 
 \ The top of zero page, carved off baron's allocator pool (ZA_POOL in
 \ main.6502 stops below zp_fixed). The busiest per-player arrays live here
-\ because every LDA/STA/INC tank_x,X is then a byte shorter: these nine
+\ because every LDA/STA/INC tank_x,X is then a byte shorter: nine of them
 \ saved 117 bytes. Only arrays read mostly with ,X pay: abs,Y has no zp
 \ form (except LDX/STX), and every byte here is one the allocator loses.
-\ The allocator reached &4F when this was set up; if it runs out, move
-\ tank_colour (fewest accesses, at the bottom) back to Printer.
+\ When the allocator ran out (the third memory pass), tank_colour, with
+\ the fewest accesses, went back out to the NMI area; tank_weapon is next.
 \ zp,X wraps at &FF where abs,X would not; the indices are all < MAXP*3.
-ZP_ARRAYS = 9
+ZP_ARRAYS = 8
 zp_fixed = &90 - ZP_ARRAYS * MAXP
 SECTION ZeroPage, org = zp_fixed, guard = &90
-.tank_colour    SKIP MAXP       ; logical colour
 .tank_weapon    SKIP MAXP       ; the weapon each player has selected
 .tank_power_lo  SKIP MAXP       ; 0-1000
 .tank_power_hi  SKIP MAXP
@@ -71,7 +70,8 @@ SECTION Nmi, org = &0D01, guard = &0E00
 .shells         SKIP MAXSH * 16 ; shells in flight (weapons.6502)
 .sh_drawn       SKIP MAXSH      ; nonzero while the shell's dot is on screen
 .sh_oldx        SKIP MAXSH
-.sh_oldy        SKIP MAXSH
+.tank_colour    SKIP MAXP       ; logical colour (out of zero page since
+                                ; the allocator ran short)
 .sh_active      SKIP MAXSH
 .nmi_end
 ENDSECTION
