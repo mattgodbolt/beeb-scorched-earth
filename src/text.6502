@@ -28,7 +28,7 @@ ZA_AUTO1 ink_byte
 
 \ Draw character A at (text_x, text_y) and move text_x on a cell. Returns
 \ A = text_x (menu.6502's "JSR draw_char : JSR draw_char" relies on that
-\ being >= 96, past Z, so the second call draws a space), never zero, and
+\ being >= 96, past the font, so the second call draws a space), never zero, and
 \ with carry clear: menu.6502 relies on both. Preserves Y, which the two
 \ loops below that print with it index by.
 .draw_char
@@ -63,14 +63,20 @@ ZA_AUTO1 ink_byte
     RTS
 }
 
-\ Packed text. The font has 64 characters, so each takes six bits:
-\ PACKED "TEXT" assembles four characters to three bytes, ending with code
-\ 63 (an underline, which no text uses) and padded to a whole byte.
-\ menu.6502 unpacks it. (Defined here, ahead of every file that uses it.)
-FUNCTION codes6(s) = CONCAT(CODES(s) - 32, 63, 0)
+\ Packed text, five bits a character, first bit highest: code c is ASCII
+\ c + 64 - letters, then 27-29 for . ! ' (which the font repeats at 91-93)
+\ and 30 for a space (94, past the font: draw_char's space). 31 ends the
+\ string, which is padded to a whole byte. Code 0 escapes: the next five
+\ bits are ASCII 32-63, for digits and the rarer punctuation. menu.6502's
+\ unpack reads it. (Defined here, ahead of every file that uses it.)
+\ T5 is the codes for each of ASCII 32-90.
+T5 = CONCAT({{30}, {28}}, ZIP(REPEATED(5, 0), 2..6), {{29}}, ZIP(REPEATED(6, 0), 8..13), {{27}}, ZIP(REPEATED(17, 0), 15..31), {{0}}, ZIP(1..26))
+ASSERT LEN(T5) = 90 - 32 + 1
+FUNCTION codes5(s) = CONCAT(FLATTEN(T5[CODES(s) - 32]), 31, 0, 0)
 MACRO PACKED text
-    FOR k = 0..<(LEN(text) * 6 + 13) DIV 8
-        EQUB ((codes6(text)[k * 8 DIV 6] * 64 + codes6(text)[k * 8 DIV 6 + 1]) >> (4 - k * 8 MOD 6)) AND 255
+    c5 = codes5(text)
+    FOR k = 0..<((LEN(c5) - 2) * 5 + 7) DIV 8
+        EQUB ((c5[k * 8 DIV 5] * 1024 + c5[k * 8 DIV 5 + 1] * 32 + c5[k * 8 DIV 5 + 2]) >> (7 - k * 8 MOD 5)) AND 255
     NEXT
 ENDMACRO
 
@@ -178,6 +184,10 @@ ZA_AUTO 3, num
     GLYPH "#.#", "#.#", ".#.", "#.#", "#.#"     ; X
     GLYPH "#.#", "#.#", ".#.", ".#.", ".#."     ; Y
     GLYPH "###", "..#", ".#.", "#..", "###"     ; Z
-    \ No text uses [ \ ] ^ or _ (the packed-text terminator), so they are
-    \ left out: draw_char shows them as spaces.
+    \ No text uses [ \ ] ^ or _, so their places hold . ! and ', which
+    \ packed text puts there; from ^ on draw_char shows a space.
+    GLYPH "...", "...", "...", "...", ".#."     ; .
+    GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; !
+    GLYPH ".#.", ".#.", "...", "...", "..."     ; '
 .font_end
+ASSERT 32 + (font_end - font) DIV 2 = 94

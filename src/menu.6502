@@ -56,13 +56,20 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
 \ tbits must start at &80 (empty) for each string.
 .unpack
 {
-    LDA #4                                      ; shifts out after 6 bits
+    JSR five : BNE plain
+    JSR five : ADC #31                          ; escaped: +32 (and not 0)
+    RTS
+.plain
+    ADC #63 : CMP #95                           ; (+64: the carry is set)
+    RTS
+\ The next five bits -> A, with Z set if they are 0, and carry set.
+.five
+    LDA #8                                      ; shifts out after 5 bits
 .bit
     ASL tbits : BNE got
     PHA : JSR fetch : SEC : ROL A : STA tbits : PLA
 .got
     ROL A : BCC bit
-    ADC #31 : CMP #95                           ; (+32: the 4 left carry set)
     RTS
 }
 
