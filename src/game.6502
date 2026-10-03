@@ -258,7 +258,7 @@ go = {fire, fire, shield, battery, lazy, west, east, quit, tab, down, up, right,
     STA tank_health,Y
     JSR snd_click
     JSR draw_status
-    JMP release
+    BEQ release                                 ; (always: see draw_status)
 .shield
     JSR raise_shield : BCC release
     JSR snd_click
@@ -270,7 +270,8 @@ go = {fire, fire, shield, battery, lazy, west, east, quit, tab, down, up, right,
     JSR lazy_boy
     JMP release
 .west
-    LDA #&FF : BNE drive                        ; (always)
+    LDA #&FF
+    BITABS                                      ; (skips the LDA #1)
 .east
     LDA #1
 .drive
@@ -326,13 +327,10 @@ go = {fire, fire, shield, battery, lazy, west, east, quit, tab, down, up, right,
     DEC inv,X
     LDX cur
     LDA item_radius,Y : STA tank_shield,X
-    \ The mags are the weakest and the strongest.
-    TYA : LDY #0
-    CMP #I_MAG : BEQ mag
-    CMP #I_SUPER_MAG : BNE @+
-.mag
-    DEY
-.@  TYA : STA tank_mag,X
+    \ The mags are the weakest and the strongest: Y - I_MAG - 1 is 0-2
+    \ for the others. (inv_index left carry clear: inv is under 256 bytes.)
+    TYA : SBC #I_MAG : CMP #I_SUPER_MAG - I_MAG - 1
+    LDA #0 : ROL A : STA tank_mag,X             ; (1 for a mag)
     JSR draw_tank
     SEC
     RTS
@@ -425,8 +423,10 @@ ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
 \ Tanks whose health has run out blow up - which may finish off others.
 .kill_dead
 {
-    ZA_AUTO1 shooter, i
-    LDA cur : STA shooter
+    ZA_AUTO1 i
+    \ Kept where explosion keeps it, so each blast can skip saving it;
+    \ drop_tanks puts it back in cur (nothing in between needs it there).
+    LDA cur : STA explosion.shooter
 .again
     LDX #0
 .loop
@@ -448,8 +448,7 @@ ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
     LDA #12 : STA expl_r
     LDA #70 : STA blast_power
     JSR snd_die
-    LDA shooter : STA cur
-    JSR explosion
+    JSR explosion.kept
     JMP again
 .next
     LDX i : INX : CPX num_players : BNE loop
@@ -463,6 +462,7 @@ ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
 {
     ZA_AUTO1 shooter
     LDA cur : STA shooter
+.kept                                           ; (kill_dead set shooter)
     LDA expl_r : JSR snd_explode
     LDA #0 : STA shields_broke
     JSR blast                                   ; (leaves disc_r = expl_r)
@@ -529,21 +529,20 @@ ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
     JSR draw_power
     PRINT_XY C_WHITE, 4*12, 2, "ANGLE"
     JSR draw_angle
-    \ name, in the tank's colour
-    LDX cur : LDA tank_colour,X : JSR ink
+    \ name, in the tank's colour (print_name sets the ink)
     LDA #4*24 : STA text_x
     LDX cur : JSR print_name
     LDA #4*34 : JSR pad_to
     \ wind
     LDA #C_CYAN : JSR ink
     LDA wind : BEQ calm : BPL east
-    PRINT6 "<"
+    PRINT6 "<"                                  ; (-> carry set, for wind_num)
     JSR wind_num
-    JMP line2
+    BNE line2                                   ; (always: print_num ends Y = &FF)
 .east
     JSR wind_num
     PRINT6 ">"
-    JMP line2
+    BEQ line2                                   ; (always: print6 sets Z)
 .calm
     PRINT6 "CALM "
 .line2
@@ -557,7 +556,8 @@ ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
     LDX #LO(wall_names) : LDY #HI(wall_names) : JMP print_packed_nth
 .wind_num
     \ wind is shown x10, as the original's 0-200 scale, with no sign
-    LDA wind : BPL @+ : EOR #&FF : CLC : ADC #1 : .@
+    \ (only a west wind is negative, and print6 left the carry set: +1)
+    LDA wind : BPL @+ : EOR #&FF : ADC #0 : .@
     LDX #10 : JSR times
     LDA #3 : JMP print_num
 }
@@ -594,15 +594,16 @@ ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
 \ arrow for the side it faces.
 .draw_angle
 {
+    ZA_AUTO1 arrow
     LDA #4*18 : LDY #2 : JSR white_at
     LDX cur : LDA tank_angle,X
     LDY #62                                     ; >
     CMP #91 : BCC @+
     EOR #&FF : ADC #180                         ; (carry set: 180 - A)
     LDY #60                                     ; <
-.@  TAX : TYA : PHA : TXA                       ; the arrow, for after
+.@  STY arrow                                   ; for after
     LDX #3 : JSR print_byte
-    PLA : JMP draw_char
+    LDA arrow : JMP draw_char
 }
 
 \ White text from (A, Y) in pixels.
