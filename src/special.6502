@@ -8,32 +8,37 @@
 \ A Riot Charge blows the dirt away from round your own turret, centred
 \ high enough that it barely digs under you.
 .riot_charge
-{
-    LDA expl_r : LSR A : ADC #TANK_H : STA disc_cy   ; (r/2 + TANK_H above...)
-    LDX cur : LDA tank_x,X : STA disc_cx
-    LDA tank_y,X : SEC : SBC disc_cy                 ; (...the tank's bottom)
-    BCC @+ : CMP #TOP : BCS ok : .@
-    LDA #TOP
-.ok
-    STA disc_cy
+    LDA expl_r : LSR A : JSR above_tank         ; r/2 above the turret
     JMP explosion
+FOR i = 0..NITEMS-1
+    ASSERT ITEMS[i][1] <> SK_CHARGE OR (ITEMS[i][2] AND 1) = 0  ; (no LSR carry)
+NEXT
+
+\ Centre the disc on tank `cur`, A + TANK_H rows above its bottom row but
+\ no higher than TOP. Returns X = cur.
+.above_tank
+{
+    STA disc_cy                                 ; (somewhere to keep A)
+    LDX cur : LDA tank_x,X : STA disc_cx
+    LDA tank_y,X : SEC : SBC #TANK_H : SBC disc_cy
+    BCC top : CMP #TOP : BCS @+
+.top
+    LDA #TOP
+.@  STA disc_cy
+    RTS
 }
 
 \ A Dirt Charge throws a ball of dirt out of the turret, to land in front
 \ of the tank: a wall to hide behind, or a lid if it goes straight up.
 .dirt_charge
 {
-    ZA_AUTO1 dist, up
+    ZA_AUTO1 dist
     LDX cur : LDA tank_angle,X : JSR angle_vec
     \ its centre is twice the radius out along the barrel, so at 45
     \ degrees it lands clear of the tank
     LDA expl_r : ASL A : STA dist
-    LDA vec_up : LDX dist : JSR umul8 : STA up
-    LDX cur : LDA tank_y,X : SEC : SBC #TANK_H : SBC up
-    BCC top : CMP #TOP : BCS @+
-.top
-    LDA #TOP
-.@  STA disc_cy
+    LDA vec_up : LDX dist : JSR umul8
+    JSR above_tank                              ; (disc_cx is set below)
     \ (sideways distances are halved: pixels are twice as wide)
     LDA vec_side : LDX dist : JSR umul8 : LSR A
     LDX cur : BIT vec_left : BMI left
@@ -121,13 +126,14 @@
     LDA tank_y,X : SEC : SBC #TANK_H-1 : SBC ly+1
     CMP #TOP : BCC done
     TAY
-    \ column = tank_x +- lx / 256, until it leaves the screen
+    \ column = tank_x +- lx / 256, until it leaves the screen. lx / 256
+    \ grows by 1 a step at most, so going right it stops at SCREEN_W long
+    \ before the sum could carry, and going left it first wraps to 255.
     LDA tank_x,X
-    BIT vec_left : BPL right
-    SBC lx+1 : BCS column                       ; (carry set by the CMP)
-    BCC done
-.right
-    CLC : ADC lx+1 : BCS done
+    BIT vec_left : BMI left
+    CLC : ADC lx+1 : BCC column                 ; (always)
+.left
+    SBC lx+1 : BCC done                         ; (carry set by the CMP)
 .column
     CMP #SCREEN_W : BCS done
     TAX
@@ -139,8 +145,8 @@
 .air
     LDA #cbyte(C_HOT) : JSR plot
     STX shot_x+2 : STY shot_y+2
-    JSR tank_at : BCC next
-    LDX hit_tank : LDA bit,X : ORA hits : STA hits
+    JSR tank_at : BCC next                      ; (a hit returns X = hit_tank)
+    LDA bit,X : ORA hits : STA hits
 .next
     \ Drawn four steps a frame, so you see it go.
     INC n : LDA n : AND #3 : BNE step
@@ -158,10 +164,8 @@
 .victim
     STX cur
     LDA hits : AND bit,X : BEQ spared
-    LDA tank_shield,X : PHA
-    LDA #0 : STA tank_shield,X
-    LDA blast_power : JSR hurt
-    PLA : LDX cur : STA tank_shield,X
+    \ (into hurt past its shield test: it wants dmg, and X = cur)
+    LDA blast_power : STA hurt.dmg : JSR hurt.unshielded
 .spared
     LDX cur : INX : CPX num_players : BNE victim
     LDX attacker : STX cur : STX explosion.shooter
@@ -194,7 +198,7 @@ NEXT
     LDA cur : STA explosion.shooter             ; (for drop_tanks, below)
     LDX weapon : LDA burrow_counts-I_DIGGERS,X : STA n
     \ n tunnels, n odd: they go dx = -(n-1)/2 .. (n-1)/2 pixels a hole
-    LSR A : EOR #&FF : CLC : ADC #1 : STA dx
+    LSR A : EOR #&FF : ADC #0 : STA dx          ; (n odd: LSR sets carry)
 .tunnel
     LDA hit_x : STA disc_cx
     LDA hit_y : STA disc_cy
@@ -289,6 +293,6 @@ MAX_CLIMB = 6
 .col
     LDA ground,Y : CMP top : BCS @+ : STA top : .@
     INY : DEX : BNE col
-    LDA top : CLC : SBC #0                      ; top - 1
+    DEC top : LDA top
     RTS
 }
