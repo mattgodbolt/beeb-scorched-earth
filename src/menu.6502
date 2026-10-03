@@ -115,9 +115,11 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
 \ Print packed text given inline after the JSR, as print_inline once did:
 \     JSR print6 : PACKED "TEXT"
 \ or put it somewhere in some colour first:
-\     JSR print_at : EQUB x, y, colour : PACKED "TEXT"
-\ with x and y in pixels. Most of the text on the screens between rounds
-\ is placed like this; the PRINT_AT macro takes columns and lines.
+\     JSR print_at : EQUB x + colour, y : PACKED "TEXT"
+\ with x and y in pixels. x is a whole column, a multiple of 4, which
+\ leaves room for the colour in its low bits: one of print_inks. Most of
+\ the text on the screens between rounds is placed like this; the
+\ PRINT_AT macro takes columns and lines.
 .print_at
     SEC : BITZP                                 ; (swallows the CLC)
 .print6
@@ -126,9 +128,9 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
     PLA : STA tptr : PLA : STA tptr+1           ; (carry survives to BCC)
     JSR fetch                                   ; the JSR's own last byte
     BCC text
-    JSR fetch : STA text_x
+    JSR fetch : TAX : AND #&FC : STA text_x
     JSR fetch : STA text_y
-    JSR fetch : JSR ink
+    TXA : AND #3 : TAX : LDA print_inks,X : STA ink_byte
 .text
     JSR print_packed
     JMP (tptr)                                  ; just past the text
@@ -149,8 +151,13 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
 MACRO PRINT6 text
     JSR print6 : PACKED text
 ENDMACRO
+\ The colours print_at can choose from, as ink_byte values.
+PRINT_INKS = {C_WHITE, C_CYAN, C_YELLOW, C_BLUE}
+.print_inks
+    EQUB cbyte(PRINT_INKS)
 MACRO PRINT_XY colour, x, y, text
-    JSR print_at : EQUB x, y, colour : PACKED text
+    ASSERT x MOD 4 = 0
+    JSR print_at : EQUB x + FIND(PRINT_INKS, colour), y : PACKED text
 ENDMACRO
 MACRO PRINT_AT colour, col, line, text
     PRINT_XY colour, col * 4, line * 7, text
