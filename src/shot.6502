@@ -269,12 +269,13 @@ ASSERT LO(MAG_F) = 0 AND LO(MAG_SIDE) = 0
 .right
     LDY #SCREEN_W-1                             ; or right
 .crossed
-    LDA wall_type : BEQ open
-    CMP #WALL_WRAP : BEQ wrap
+    ASSERT WALL_NONE = 0 AND WALL_WRAP = 1 AND WALL_RUBBER = 2
+    LDX wall_type : BEQ open
+    DEX : BEQ wrap
     \ Rubber and concrete both put it back on the edge column.
-    STY shot_x+2 : LDX #0 : STX shot_x+3
-    CMP #WALL_RUBBER : BNE concrete
-    JSR negate_vel                              ; bounce (X = 0: vx)
+    STY shot_x+2 : LDA #0 : STA shot_x+3
+    DEX : BNE concrete
+    TAX : JSR negate_vel                        ; bounce (X = 0: vx)
     CLC : RTS
 .concrete
     \ Bursts on the wall - unless it went over the top of the screen.

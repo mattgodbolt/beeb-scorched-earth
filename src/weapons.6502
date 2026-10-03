@@ -357,15 +357,15 @@ SPREAD = 2200
 
 \ The shell in the zero page block has landed (hit_kind, hit_x, hit_y).
 \ A Riot Bomb is an explosion like any other: its blast power is 0.
+\ expl_r and blast_power are still the weapon's, as game.6502's fire set
+\ them: only a bomblet changes them in flight, and a Funky Bomb's shells
+\ are all bomblets once it has burst.
 .land
 {
     ZA_AUTO1 x, dir                             ; (a roller's)
     LDA hit_kind : CMP #HIT_LOST : BEQ none
     LDA hit_x : STA disc_cx
     LDA hit_y : STA disc_cy
-    LDX weapon
-    LDA item_radius,X : STA expl_r
-    LDA item_power,X : STA blast_power
     LDA shot_kind : AND #15 : TAX
     LDA land_hi,X : PHA : LDA land_lo,X : PHA
     RTS                                         ; not a return: a jump

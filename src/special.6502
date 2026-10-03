@@ -71,10 +71,9 @@ NEXT
 {
     LDY #4 : JSR power_shr                      ; radius = power / 16 ...
     CMP #8 : BCS @+ : LDA #8 : .@               ; ... but at least 8
-    STA expl_r
+    STA expl_r : JSR snd_explode
     LDX cur : LDA tank_x,X : STA disc_cx
     LDA tank_y,X : SEC : SBC #2 : STA disc_cy
-    LDA expl_r : JSR snd_explode
     LDA #0 : STA shields_broke
     JSR blast
     \ (with the firer out of the game for a moment, it can't be hurt)
