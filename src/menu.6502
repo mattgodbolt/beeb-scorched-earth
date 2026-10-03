@@ -101,7 +101,8 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
     JSR packed_nth
     \ (on into print_packed)
 
-\ Print packed text from tptr.
+\ Print packed text from tptr. Returns A = 95, past the font (print_name
+\ prints that as a space).
 .print_packed
 {
     LDA #&80 : STA tbits
@@ -173,7 +174,7 @@ ENDMACRO
     LDX t : LDA tank_type,X
     LDX #LO(type_names) : LDY #HI(type_names)
     JSR print_packed_nth
-    LDA #32 : JSR draw_char
+    JSR draw_char                               ; A = 95, the end: a space
     LDA t : ADC #49 : JMP draw_char             ; (draw_char leaves carry clear)
 }
 .type_names
