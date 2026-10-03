@@ -36,6 +36,9 @@ await b.write("seed", [0x34, 0x12]);
 await b.write("vsyncs", [0]);
 await b.run(0.1); await b.keyUp("SPACE");
 await b.run(4);
+// OS 1.20's BRK handler: a shot that crashes says so in its line, rather
+// than hashing whatever state the crash left (which moves with the code).
+await b.breakpoint(0xDC27);
 const st = await b.saveState("round1");
 const lines = [];
 const configs = [];
@@ -64,10 +67,12 @@ for (const [w, wall, plo_, phi_, angOverride, shield] of configs) {
   if (shield) { const s = await b.read("tank_shield", 6); s[cur] = shield; await b.write("tank_shield", s); }
   await b.tap("SPACE");
   const name = `w${w}_wall${wall}_a${ang}_p${phi_}${plo_}${shield ? "_s" : ""}`;
-  for (let f = 0; f < 12; f++) {
-    await b.frames(40);
+  let crashed = false;
+  for (let f = 0; f < 12 && !crashed; f++) {
+    crashed = (await b.frames(40)).stopped_reason === "breakpoint";
     if (shotDir) await b.shot(`${shotDir}/${name}_${f}.png`);
   }
+  if (crashed) { lines.push(`${name} BRK`); continue; }
   const mem = [...await b.read("ground", 161), ...await b.read("tank_health", 6), ...await b.read("tank_money", 18),
     ...await b.read("tank_x", 6), ...await b.read("tank_y", 6), ...await b.read("tank_shield", 6), ...await b.read("inv", 6 * b.syms.NITEMS)];
   lines.push(`${name} ${createHash("sha1").update(Buffer.from(mem)).digest("hex")} health ${mem.slice(161, 163)}`);
