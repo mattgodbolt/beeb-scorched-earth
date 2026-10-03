@@ -78,15 +78,17 @@ ZA_AUTO1 terrain_amp
 \ repainted from the model.
 .make_colours
 {
-    ZA_AUTO1 shaded, stripe, t
+    ZA_AUTO1 shaded, stripe
     JSR rand : AND #3 : TAX : LDA stripes,X : STA stripe
     JSR rand : LSR A : ROR shaded               ; bit 7: shaded
     LDX #0
 .row
     LDA #0
     BIT shaded : BPL sky
-    TXA : LSR A : LSR A : LSR A : LSR A : AND #&0C : STA t   ; (y >> 6) * 4
-    TXA : AND #3 : ORA t : TAY : LDA sky_dither,Y
+    \ (y AND 3) * 4 + (y >> 6): each ASL's carry drops into the bit it
+    \ has just cleared, so the ADCs never carry out.
+    TXA : AND #&C3 : ASL A : ADC #0 : ASL A : ADC #0
+    TAY : LDA sky_dither,Y
 .sky
     STA skyrow,X
     TXA : AND #7 : BNE green
@@ -98,9 +100,11 @@ ZA_AUTO1 terrain_amp
     INX : BNE row
     RTS
     \ (stripes is in lowdata.6502.)
+    \ By row within a group of four, then by quarter of the screen (top
+    \ first): more blue the lower the quarter.
 .sky_dither
-    EQUB 0, 0, 0, 0
-    EQUB lpix(C_BLUE), 0, 0, 0
-    EQUB lpix(C_BLUE), 0, lpix(C_BLUE) DIV 2, 0
-    EQUB lpix(C_BLUE), lpix(C_BLUE) DIV 2, lpix(C_BLUE), lpix(C_BLUE) DIV 2
+    EQUB 0, lpix(C_BLUE), lpix(C_BLUE), lpix(C_BLUE)
+    EQUB 0, 0, 0, lpix(C_BLUE) DIV 2
+    EQUB 0, 0, lpix(C_BLUE) DIV 2, lpix(C_BLUE)
+    EQUB 0, 0, 0, lpix(C_BLUE) DIV 2
 }
