@@ -48,16 +48,7 @@ ZA_AUTO1 num_rounds, round_no, menu_sel
     RTS
 }
 
-\ Packed text. The font has 64 characters, so each takes six bits:
-\ PACKED "TEXT" assembles four characters to three bytes, ending with code
-\ 63 (an underline, which no text uses) and padded to a whole byte.
-FUNCTION codes6(s) = CONCAT(CODES(s) - 32, 63, 0)
-MACRO PACKED text
-    FOR k = 0..<(LEN(text) * 6 + 13) DIV 8
-        EQUB ((codes6(text)[k * 8 DIV 6] * 64 + codes6(text)[k * 8 DIV 6 + 1]) >> (4 - k * 8 MOD 6)) AND 255
-    NEXT
-ENDMACRO
-
+\ Packed text (the PACKED macro is in text.6502).
 ZA_AUTO2 tptr               ; the next byte of packed text
 ZA_AUTO1 tbits              ; what is left of the last one, then a 1
 

@@ -109,34 +109,32 @@ ASSERT ITEMS[I_SANDHOG][0] = "SANDHOG" AND ITEMS[I_FORCE][0] = "FORCE SHIELD"
 
 .item_names
 FOR i = 0..NITEMS-1
-    EQUS ITEMS[i][0], 0
+    PACKED ITEMS[i][0]
 NEXT
 
-\ Print item A's name.
+\ Print item A's name. Finding a packed name means unpacking the ones
+\ before it, which made redrawing the shop list slow, so this remembers
+\ where the name after the last one printed starts and goes on from there
+\ when it can. (print_packed leaves tptr just past the string: each one is
+\ padded to a whole byte.)
 .print_item_name
-    LDX #LO(item_names) : LDY #HI(item_names)
-\ Print string A of the zero-separated list at (X, Y).
-.print_nth
-    JSR find_nth
-    JMP print_string
-\ Find string A of the zero-separated list at (X, Y): address in A (lo)
-\ and X (hi), and in find_nth.ptr.
-.find_nth
 {
-    ZA_AUTO2 ptr
-    STX ptr : STY ptr+1
-    TAX
-    LDY #0
-.skip
-    DEX : BMI found
-.find
-    LDA (ptr),Y
-    INC ptr : BNE @+ : INC ptr+1 : .@
-    CMP #0 : BNE find
-    BEQ skip
-.found
-    LDA ptr : LDX ptr+1
+    TAX : INX
+    SEC : SBC next_i                            ; how many past the memo
+    STX next_i
+    BCS ahead
+    DEX : TXA                                   ; behind it: from the start
+    LDX #LO(item_names) : LDY #HI(item_names)
+    BCC go                                      ; (always)
+.ahead
+    LDX next_p : LDY next_p+1
+.go
+    JSR print_packed_nth
+    LDA tptr : STA next_p
+    LDA tptr+1 : STA next_p+1
     RTS
+.next_i EQUB 0
+.next_p EQUW item_names
 }
 
 \ X = inventory index of item A for player `cur`.

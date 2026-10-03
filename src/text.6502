@@ -63,22 +63,16 @@ ZA_AUTO1 ink_byte
     RTS
 }
 
-ZA_AUTO2 str_ptr
-
-\ Print the zero-terminated string at (A = lo, X = hi).
-.print_string
-    STA str_ptr : STX str_ptr+1
-    LDY #0
-\ Print from (str_ptr),Y to the terminator; returns Y = its index.
-.print_from
-{
-.next
-    LDA (str_ptr),Y : BEQ done
-    JSR draw_char
-    INY : BNE next
-.done
-    RTS
-}
+\ Packed text. The font has 64 characters, so each takes six bits:
+\ PACKED "TEXT" assembles four characters to three bytes, ending with code
+\ 63 (an underline, which no text uses) and padded to a whole byte.
+\ menu.6502 unpacks it. (Defined here, ahead of every file that uses it.)
+FUNCTION codes6(s) = CONCAT(CODES(s) - 32, 63, 0)
+MACRO PACKED text
+    FOR k = 0..<(LEN(text) * 6 + 13) DIV 8
+        EQUB ((codes6(text)[k * 8 DIV 6] * 64 + codes6(text)[k * 8 DIV 6 + 1]) >> (4 - k * 8 MOD 6)) AND 255
+    NEXT
+ENDMACRO
 
 ZA_AUTO 3, num
 
