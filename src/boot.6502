@@ -46,6 +46,9 @@
     DEX : BPL defaults
     LDA #HUMAN : STA tank_type
     JMP start
+\ Player colours: red, yellow, magenta, cyan, white, blue.
+.player_colours
+    EQUB C_RED, C_YELLOW, C_MAGENTA, C_CYAN, C_WHITE, C_BLUE
 }
 
 \ Cursor off, screen shortened, palette set, interrupts hooked. (!BOOT has

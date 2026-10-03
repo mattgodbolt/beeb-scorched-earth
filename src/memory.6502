@@ -76,9 +76,11 @@ SECTION Nmi, org = &0D01, guard = &0E00
 .nmi_end
 ENDSECTION
 
-\ Four more holes are filled with constant tables, carried in the SCORCH
+\ Five more holes are filled with constant tables, carried in the SCORCH
 \ file and copied into place once at start-up (lowdata.6502, boot.6502):
 \   &0100-stack_low_guard  the bottom of the stack page
+\   printer_end-&08BF  the rest of the printer buffer: nothing is ever
+\                  printed, and &08C0 up holds the four envelopes
 \   &0380-&03DF  the cassette filing system's workspace; no tape is ever used
 \   tables_end-&0CFF  the rest of the user-defined characters
 \   nmi_end-&0DEF  the rest of the extended vectors, which only ROMs use;

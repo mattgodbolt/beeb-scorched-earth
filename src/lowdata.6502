@@ -7,12 +7,22 @@
 \ between holes freely.
 \ ***************************************************************************
 
+\ A glyph is five rows of three pixels packed into a word, top row in the
+\ top bits: rows land at bits 15-13, 12-10, 9-7, 6-4 and 3-1.
+FUNCTION rowbits(s) = SUM((CODES(s) == 35) * {4, 2, 1})
+FUNCTION glyph(a, b, c, d, e) = (rowbits(a) << 13) + (rowbits(b) << 10) + (rowbits(c) << 7) + (rowbits(d) << 4) + (rowbits(e) << 1)
+MACRO GLYPH a, b, c, d, e
+    EQUW glyph(a, b, c, d, e)
+ENDMACRO
+
 .low_tape_payload
 SECTION LowTape, org = &0380, guard = &03E0
 .low_tape_start
 \ sin(d) * 255 for d = 0..90 degrees.
 .sintab
     EQUB ROUND(SIN((0..90) * PI / 180) * 255)
+\ Power wobble by computer type, from SHOOTER (ai.6502).
+.ai_wobble      EQUB 60, 120, 70, 35, 0     ; (20 for a Spoiler was murderous)
 .low_tape_end
 ENDSECTION
 
@@ -32,6 +42,10 @@ ENDSECTION
 SECTION LowPrinter, org = printer_end, guard = &08C0
 .low_printer_start
 .item_radius    EQUB ITEMS[.., 2]
+\ Each computer type's angles, from SHOOTER: the first ai_angles entry
+\ it tries, and how many (ai.6502).
+.ai_first       EQUB 0, 1, 2, 2, 2
+.ai_count       EQUB 1, 1, 4, 4, 4
 .low_printer_end
 ENDSECTION
 
@@ -41,6 +55,76 @@ SECTION LowUdg, org = tables_end, guard = &0D00
 \ Dirt stripe colours, one picked a round (make_colours).
 .stripes
     EQUB cbyte(C_YELLOW), cbyte(C_CYAN), cbyte(C_WHITE), cbyte(C_BLUE)
+\ Each player's first byte of inv (weapons.6502, memory.6502).
+.inv_base       EQUB (0..MAXP-1) * NITEMS
+\ Powers of ten for print_number (text.6502).
+.pow_lo  EQUB LO({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
+.pow_mid EQUB HI({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000})
+.pow_hi  EQUB ({1, 10, 100, 1000, 10000, 100000, 1000000, 10000000} >> 16) AND 255
+\ draw_char's glyphs (text.6502) for ASCII 32-90, space to Z.
+.font
+    GLYPH "...", "...", "...", "...", "..."     ; space
+    GLYPH ".#.", ".#.", ".#.", "...", ".#."     ; !
+    GLYPH "#.#", "#.#", "...", "...", "..."     ; "
+    GLYPH "#.#", "###", "#.#", "###", "#.#"     ; #
+    GLYPH ".##", "##.", ".#.", ".##", "##."     ; $
+    GLYPH "#.#", "..#", ".#.", "#..", "#.#"     ; %
+    GLYPH ".#.", "#.#", ".#.", "#.#", ".##"     ; &
+    GLYPH ".#.", ".#.", "...", "...", "..."     ; '
+    GLYPH "..#", ".#.", ".#.", ".#.", "..#"     ; (
+    GLYPH "#..", ".#.", ".#.", ".#.", "#.."     ; )
+    GLYPH "...", "#.#", ".#.", "#.#", "..."     ; *
+    GLYPH "...", ".#.", "###", ".#.", "..."     ; +
+    GLYPH "...", "...", "...", ".#.", "#.."     ; ,
+    GLYPH "...", "...", "###", "...", "..."     ; -
+    GLYPH "...", "...", "...", "...", ".#."     ; .
+    GLYPH "..#", "..#", ".#.", "#..", "#.."     ; /
+    GLYPH "###", "#.#", "#.#", "#.#", "###"     ; 0
+    GLYPH ".#.", "##.", ".#.", ".#.", "###"     ; 1
+    GLYPH "###", "..#", "###", "#..", "###"     ; 2
+    GLYPH "###", "..#", ".##", "..#", "###"     ; 3
+    GLYPH "#.#", "#.#", "###", "..#", "..#"     ; 4
+    GLYPH "###", "#..", "###", "..#", "###"     ; 5
+    GLYPH "###", "#..", "###", "#.#", "###"     ; 6
+    GLYPH "###", "..#", "..#", ".#.", ".#."     ; 7
+    GLYPH "###", "#.#", "###", "#.#", "###"     ; 8
+    GLYPH "###", "#.#", "###", "..#", "###"     ; 9
+    GLYPH "...", ".#.", "...", ".#.", "..."     ; :
+    GLYPH "...", ".#.", "...", ".#.", "#.."     ; ;
+    GLYPH "..#", ".#.", "#..", ".#.", "..#"     ; <
+    GLYPH "...", "###", "...", "###", "..."     ; =
+    GLYPH "#..", ".#.", "..#", ".#.", "#.."     ; >
+    GLYPH "###", "..#", ".##", "...", ".#."     ; ?
+    GLYPH ".#.", "#.#", "###", "#..", ".##"     ; @
+    GLYPH ".#.", "#.#", "###", "#.#", "#.#"     ; A
+    GLYPH "##.", "#.#", "##.", "#.#", "##."     ; B
+    GLYPH ".##", "#..", "#..", "#..", ".##"     ; C
+    GLYPH "##.", "#.#", "#.#", "#.#", "##."     ; D
+    GLYPH "###", "#..", "##.", "#..", "###"     ; E
+    GLYPH "###", "#..", "##.", "#..", "#.."     ; F
+    GLYPH ".##", "#..", "#.#", "#.#", ".##"     ; G
+    GLYPH "#.#", "#.#", "###", "#.#", "#.#"     ; H
+    GLYPH "###", ".#.", ".#.", ".#.", "###"     ; I
+    GLYPH "..#", "..#", "..#", "#.#", ".#."     ; J
+    GLYPH "#.#", "#.#", "##.", "#.#", "#.#"     ; K
+    GLYPH "#..", "#..", "#..", "#..", "###"     ; L
+    GLYPH "#.#", "###", "###", "#.#", "#.#"     ; M
+    GLYPH "##.", "#.#", "#.#", "#.#", "#.#"     ; N
+    GLYPH ".#.", "#.#", "#.#", "#.#", ".#."     ; O
+    GLYPH "##.", "#.#", "##.", "#..", "#.."     ; P
+    GLYPH ".#.", "#.#", "#.#", "##.", ".##"     ; Q
+    GLYPH "##.", "#.#", "##.", "#.#", "#.#"     ; R
+    GLYPH ".##", "#..", ".#.", "..#", "##."     ; S
+    GLYPH "###", ".#.", ".#.", ".#.", ".#."     ; T
+    GLYPH "#.#", "#.#", "#.#", "#.#", "###"     ; U
+    GLYPH "#.#", "#.#", "#.#", "#.#", ".#."     ; V
+    GLYPH "#.#", "#.#", "###", "###", "#.#"     ; W
+    GLYPH "#.#", "#.#", ".#.", "#.#", "#.#"     ; X
+    GLYPH "#.#", "#.#", ".#.", ".#.", ".#."     ; Y
+    GLYPH "###", "..#", ".#.", "#..", "###"     ; Z
+    \ No text uses [ \ ] ^ or _ (the packed-text terminator), so they are
+    \ left out: draw_char shows them as spaces.
+.font_end
 .low_udg_end
 ENDSECTION
 
@@ -48,5 +132,7 @@ ENDSECTION
 SECTION LowNmi, org = nmi_end, guard = &0DF0
 .low_nmi_start
 .item_kind      EQUB ITEMS[.., 1]
+\ Colour bytes for logical colours 0-15, both pixels.
+.cbytes         EQUB cbyte(0..15)
 .low_nmi_end
 ENDSECTION

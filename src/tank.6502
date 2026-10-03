@@ -9,9 +9,7 @@ TANK_HALF   = 3             ; columns either side of tank_x
 TANK_H      = 5             ; rows
 BARREL_LEN  = 7
 
-\ Player colours: red, yellow, magenta, cyan, white, blue.
-.player_colours
-    EQUB C_RED, C_YELLOW, C_MAGENTA, C_CYAN, C_WHITE, C_BLUE
+\ (player_colours, only read at start-up, is in boot.6502.)
 
 \ The body, top row first, bit 7 = leftmost column.
 .tank_shape

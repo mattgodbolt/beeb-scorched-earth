@@ -25,9 +25,7 @@ NTYPES  = 6
 ASSERT SHOOTER = 2
 \ The last column is a Lazy Boy's: a Spoiler that doesn't spoil.
 LAZY = NTYPES
-.ai_wobble  EQUB 60, 120, 70, 35, 0     ; (20 for a Spoiler was murderous)
-.ai_first   EQUB 0, 1, 2, 2, 2          ; index into ai_angles
-.ai_count   EQUB 1, 1, 4, 4, 4
+\ (ai_wobble, ai_first and ai_count are in lowdata.6502.)
 .ai_angles  EQUB 70, 50, 45, 65, 80, 30
 
 ZA_AUTO1 ai_target, ai_dir, ai_err
