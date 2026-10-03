@@ -4,10 +4,15 @@
 \ ***************************************************************************
 
 \ Point scr at the screen byte holding pixel (X, Y). Preserves X and Y.
+\ Returns A = scr+1 and carry clear. The column's offset, (x >> 1) * 8, is
+\ worked out rather than looked up: its two tables would take 320 bytes of
+\ the holes below &0E00, which hold the inventory instead.
 ZA_AUTO2 scr
 .pixaddr
-    LDA rowlo,Y : CLC : ADC coloff_lo,X : STA scr
-    LDA rowhi,Y : ADC coloff_hi,X : STA scr+1
+    LDA #0 : STA scr+1
+    TXA : ASL A : ROL scr+1 : ASL A : ROL scr+1 ; (each ROL clears carry)
+    AND #&F8 : ADC rowlo,Y : STA scr
+    LDA rowhi,Y : ADC scr+1 : STA scr+1
     RTS
 
 \ Put the background back at one pixel. X = x, Y = y. The background is
@@ -86,17 +91,23 @@ ZA_AUTO1 bg_y0, bg_y1
 ZA_AUTO1 rect_x0, rect_x1
 .repaint
 {
-    ZA_AUTO1 c, cend, gl, gr, x
+    ZA_AUTO1 c, cend, gl, gr
+    ZA_AUTO2 off
     LDA rect_x1 : CMP #SCREEN_W : BCC @+ : LDA #SCREEN_W-1 : .@
     LSR A : STA cend
     LDA rect_x0 : LSR A : STA c                 ; (callers clip x0 at 0)
 .col
-    LDA c : ASL A : STA x : TAX                 ; the column's left pixel
+    \ The column's offset into a character row, c * 8, once per column:
+    \ adding it inline below is faster than calling pixaddr every row.
+    LDY #0 : STY off+1
+    LDA c : ASL A : TAX                         ; the column's left pixel
+    ASL A : ROL off+1 : ASL A : ROL off+1 : STA off
     LDA ground,X : STA gl
     LDA ground+1,X : STA gr
     LDY bg_y0
 .row
-    LDX x : JSR pixaddr
+    LDA rowlo,Y : CLC : ADC off : STA scr
+    LDA rowhi,Y : ADC off+1 : STA scr+1
     \ Which of the two pixels are dirt picks the pixmasks entry; then
     \ sky EOR ((sky EOR dirt) AND mask) is dirt under the mask.
     LDA #0 : CPY gl : ROL A : CPY gr : ROL A : TAX

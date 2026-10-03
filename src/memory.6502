@@ -50,8 +50,6 @@ ENDSECTION
 \ The tape and RS423 buffers, soft keys and user-defined characters.
 SECTION Tables, org = &0900, guard = &0D00
 .ground         SKIP SCREEN_W+1 ; first dirt row of column x
-.coloff_lo      SKIP SCREEN_W   ; (x >> 1) * 8, indexed by x
-.coloff_hi      SKIP SCREEN_W
 .profile        SKIP MAX_R+1    ; half-widths of the current disc, by |dy|
 .profile_prev   SKIP MAX_R+1    ; the previous ring's, while a blast grows
 .colspan        SKIP MAX_R/2+2  ; half-heights of the current disc, by |dx|
@@ -63,6 +61,7 @@ SECTION Tables, org = &0900, guard = &0D00
 .tank_tries     SKIP MAXP       ; shots a tosser has had
 .tank_money     SKIP MAXP*3     ; 24-bit, low bytes first, by player
 .tank_score     SKIP MAXP
+.inv            SKIP MAXP * NITEMS  ; inv[inv_base[p] + item] (weapons.6502)
 .tables_end
 ENDSECTION
 
@@ -75,9 +74,6 @@ SECTION Nmi, org = &0D01, guard = &0E00
 .sh_active      SKIP MAXSH
 .nmi_end
 ENDSECTION
-
-\ The inventory, inv[inv_base[p] + item], is in the code (weapons.6502):
-\ no hole down here is big enough for it any more.
 
 \ Four more holes are filled with constant tables, carried in the SCORCH
 \ file and copied into place once at start-up (lowdata.6502, boot.6502):

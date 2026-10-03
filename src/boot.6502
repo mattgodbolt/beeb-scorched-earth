@@ -86,7 +86,7 @@
 .crtc_end
 }
 
-\ Build the row and column address tables.
+\ Build the row address tables.
 .init_tables
 {
     ZA_AUTO2 base
@@ -99,17 +99,12 @@
 .row
     TYA : AND #7 : ORA base : STA rowlo,Y
     LDA base+1 : STA rowhi,Y
-    INY : BEQ cols
+    INY : BEQ done
     TYA : AND #7 : BNE row
     LDA base : CLC : ADC #LO(640) : STA base     ; next character row
     LDA base+1 : ADC #HI(640) : STA base+1
     BCC row                                     ; (always: no carry out)
-.cols
-    LDX #0
-.col
-    TXA : AND #&FE : ASL A : ASL A : STA coloff_lo,X     ; (x >> 1) * 8
-    TXA : LSR A : LSR A : LSR A : LSR A : LSR A : LSR A : STA coloff_hi,X
-    INX : CPX #SCREEN_W : BNE col
+.done
     RTS
 }
 
