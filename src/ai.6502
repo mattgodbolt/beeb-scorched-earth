@@ -60,9 +60,9 @@ ZA_AUTO2 ai_power
 .mangle
     JSR rand : CMP #121 : BCS mangle
     ADC #30 : STA best_angle
-    LDX #0 : JSR rand : CLC : ADC #100 : BCC @+ : INX : .@
-    ASL A : STA best_power                      ; 2 * (rand + 100)
-    TXA : ROL A : STA best_power+1
+    JSR rand : CLC : ADC #100 : STA best_power  ; 2 * (rand + 100)
+    LDA #0 : ROL A : STA best_power+1
+    ASL best_power : ROL best_power+1
     JMP swing
 \ A human's Lazy Boy comes in here (lazy_boy).
 .lazy
@@ -243,18 +243,20 @@ lazy_boy = ai_turn.lazy
 \ Choose the biggest gun in the inventory, most of the time.
 .choose_weapon
 {
-    ZA_AUTO1 w
+    ZA_AUTO1 w, t
     LDX cur : LDA #0 : STA tank_weapon,X
     JSR rand : AND #3 : BEQ done                ; a quarter of the time: baby
     LDA #NWEAPONS-1 : STA w
 .try
-    LDY w : LDA item_kind,Y
-    CMP #SK_MISSILE : BEQ ok
-    CMP #SK_MIRV : BEQ ok
-    CMP #SK_ROLLER : BEQ ok
-    CMP #SK_BURROW : BEQ ok                     ; (it only buys sandhogs)
-    CMP #SK_FUNKY : BNE next
-.ok
+    \ (it only buys sandhogs of the burrowers)
+    LIKES = (1 << SK_MISSILE) OR (1 << SK_MIRV) OR (1 << SK_ROLLER) OR (1 << SK_BURROW) OR (1 << SK_FUNKY)
+    \ (A Leapfrog's kind holds its hops, so is past 15: shifted out, so
+    \ never liked. SK_ITEM would read as bit 0, but no weapon has it.)
+    LDY w : LDX item_kind,Y
+    LDA #LO(LIKES) : STA t : LDA #HI(LIKES)
+.bit
+    LSR A : ROR t : DEX : BPL bit               ; carry = bit kind of LIKES
+    BCC next
     LDA w : JSR inv_index : LDA inv,X : BEQ next
     LDX cur : LDA w : STA tank_weapon,X
     RTS
