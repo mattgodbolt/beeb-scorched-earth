@@ -32,49 +32,10 @@ ZA_AUTO1 glow_phase
     RTS
 }
 
-\ Put logical colours 8-15 back to black.
-.glow_off
-{
-    LDA #C_HOT << 4 OR 7
-.loop
-    STA ula_pal
-    CLC : ADC #&10 : BCC loop
-    RTS
-}
-
 \ ---------------------------------------------------------------------------
 \ Spans relative to the disc centre.
 
-\ Fill row Y from disc_cx + span_l to disc_cx + span_r (signed offsets),
-\ clipped to the screen, in the current fill_mode. Preserves Y (hspan
-\ does).
-\ disc_cx is on the screen and the offsets are at most MAX_R/2 either
-\ way, so an end off the left edge wraps round to SCREEN_W or more, just
-\ like one off the right: one compare finds both, and the offset's sign
-\ says which edge it was.
 ZA_AUTO1 span_l, span_r
-.span_rel
-{
-    LDA span_r : CLC : ADC disc_cx : CMP #SCREEN_W : BCC rok
-    BIT span_r : BMI off                        ; right end off the left edge
-    LDA #SCREEN_W-1
-.rok
-    STA span_x1
-    LDA span_l : CLC : ADC disc_cx : CMP #SCREEN_W : BCC lok
-    BIT span_l : BPL off                        ; left end off the right edge
-    LDA #0
-.lok
-    STA span_x0
-    ASSERT FILL_SOLID = 0 AND FILL_SKY = 1 AND FILL_DIRT = 2
-    LDA fill_byte
-    LDX fill_mode : BEQ go
-    LDA skyrow,Y : DEX : BEQ go
-    LDA dirtrow,Y
-.go
-    JMP hspan
-.off
-    RTS
-}
 
 \ Fill the whole disc of radius disc_r.
 .fill_disc
@@ -113,14 +74,44 @@ ZA_AUTO1 row_dy
 \ Row X of the disc from its left edge to span_r.
 .left_part
     LDA profile,X : EOR #&FF : CLC : ADC #1 : STA span_l
-    JMP span_rel
+    \ fall through
+
+\ Fill row Y from disc_cx + span_l to disc_cx + span_r (signed offsets),
+\ clipped to the screen, in the current fill_mode. Preserves Y (hspan
+\ does).
+\ disc_cx is on the screen and the offsets are at most MAX_R/2 either
+\ way, so an end off the left edge wraps round to SCREEN_W or more, just
+\ like one off the right: one compare finds both, and the offset's sign
+\ says which edge it was.
+.span_rel
+{
+    LDA span_r : CLC : ADC disc_cx : CMP #SCREEN_W : BCC rok
+    BIT span_r : BMI off                        ; right end off the left edge
+    LDA #SCREEN_W-1
+.rok
+    STA span_x1
+    LDA span_l : CLC : ADC disc_cx : CMP #SCREEN_W : BCC lok
+    BIT span_l : BPL off                        ; left end off the right edge
+    LDA #0
+.lok
+    STA span_x0
+    ASSERT FILL_SOLID = 0 AND FILL_SKY = 1 AND FILL_DIRT = 2
+    LDA fill_byte
+    LDX fill_mode : BEQ go
+    LDA skyrow,Y : DEX : BEQ go
+    LDA dirtrow,Y
+.go
+    JMP hspan
+.off
+    RTS
+}
 
 \ The part of a row of disc k that disc k-1 did not cover.
 .ring_row
 {
     LDA disc_r : LSR A : BEQ full_row           ; ring 1 is the whole disc
     CPX disc_r : BEQ full_row                   ; the new top and bottom rows
-    LDA profile_prev,X : CMP profile,X : BCS none   ; nothing new on this row
+    LDA profile_prev,X : CMP profile,X : BCS span_rel.off  ; nothing new on this row
     \ left part: -p .. -q-1
     EOR #&FF : STA span_r                       ; -q-1
     JSR left_part
@@ -128,9 +119,7 @@ ZA_AUTO1 row_dy
     LDX row_dy
     LDA profile_prev,X : CLC : ADC #1 : STA span_l
     LDA profile,X : STA span_r
-    JMP span_rel
-.none
-    RTS
+    BNE span_rel                                ; (always: p > q >= 0)
 }
 
 \ ---------------------------------------------------------------------------
@@ -169,7 +158,17 @@ ZA_AUTO1 row_dy
     LDA #FILL_SKY : STA fill_mode
     LDA expl_r : STA disc_r
     JSR fill_disc
-    JMP glow_off
+    \ fall through
+}
+
+\ Put logical colours 8-15 back to black.
+.glow_off
+{
+    LDA #C_HOT << 4 OR 7
+.loop
+    STA ula_pal
+    CLC : ADC #&10 : BCC loop
+    RTS
 }
 
 \ ---------------------------------------------------------------------------
@@ -179,6 +178,12 @@ ZA_AUTO1 row_dy
 ZA_AUTO1 fall_n             ; columns in the fall queue
 
 ZA_AUTO1 hole_top, hole_bot
+
+\ Drop a ball of dirt: draw it, then add it to the model.
+.add_dirt
+    LDA #FILL_DIRT : STA fill_mode
+    JSR fill_disc
+    BEQ disc_cols                               ; (always: disc_rows ends Z set)
 
 \ Carve the crater of the disc (disc_cx, disc_cy, disc_r) into the model.
 .carve
@@ -243,7 +248,7 @@ ZA_AUTO1 hole_top, hole_bot
 \ onto it.
 .dirt_col
 {
-    LDA hole_top : CMP ground,X : BCS none      ; all of it already dirt
+    LDA hole_top : CMP ground,X : BCS carve_col.none    ; all of it already dirt
     \ bottom of the new block: min(hole_bot, ground - 1)
     LDA ground,X : SBC #0                       ; (carry clear: -1)
     CMP hole_bot : BCC @+ : LDA hole_bot : .@
@@ -253,10 +258,9 @@ ZA_AUTO1 hole_top, hole_bot
     \ ... and the ground rises by its height, fall_b - hole_top + 1, to
     \ hole_top + fall_d (never above TOP, as hole_top isn't)
     CLC : ADC hole_top : STA ground,X
-    LDA fall_d : BEQ none
-    LDA hole_top : JMP queue_fall
-.none
-    RTS
+    LDA fall_d : BEQ carve_col.none
+    LDA hole_top
+    \ fall through
 }
 
 \ Queue a block of dirt to fall: column X, rows A..fall_b, by fall_d.
@@ -270,14 +274,6 @@ ZA_AUTO1 fall_b, fall_d
     LDA fall_d : STA fall_dist,Y
     INC fall_n
     RTS
-}
-
-\ Drop a ball of dirt: draw it, then add it to the model.
-.add_dirt
-{
-    LDA #FILL_DIRT : STA fill_mode
-    JSR fill_disc
-    JMP disc_cols
 }
 
 \ Let everything in the fall queue drop, a few rows a frame.
@@ -325,23 +321,17 @@ ZA_AUTO1 blast_power        ; damage at the very centre
     STX cur
     LDA tank_alive,X : BEQ next
     LDA tank_health,X : BEQ next                ; dead already, just not gone
-    JSR this_tank
-.next
-    LDX cur : INX : CPX num_players : BNE tank
-    RTS
-
-.this_tank
     \ dx in rows = 2 * |tank_x - cx|
     LDA tank_x,X : SEC : SBC disc_cx
     BCS @+ : EOR #&FF : ADC #1 : .@
-    CMP #40 : BCS far
+    CMP #40 : BCS next
     ASL A : TAX : JSR umul8
     LDA umul8.lo : STA dsq : LDA umul8.hi : STA dsq+1
     \ dy = |tank_y - 2 - cy|
     LDX cur
     LDA tank_y,X : SEC : SBC #2 : SBC disc_cy   ; (tank_y > 2: carry set)
     BCS @+ : EOR #&FF : ADC #1 : .@
-    CMP #80 : BCS far
+    CMP #80 : BCS next
     TAX : JSR umul8
     LDA umul8.lo : CLC : ADC dsq : STA dsq
     LDA umul8.hi : ADC dsq+1 : STA dsq+1
@@ -349,21 +339,21 @@ ZA_AUTO1 blast_power        ; damage at the very centre
     \ dist under reach matters, so stop looking there.
     LDY #0
 .root
+    CPY reach : BEQ next                        ; (reach >= 3: never at Y = 0)
     INY
     TYA : TAX : JSR umul8                       ; (preserves Y)
     LDA dsq : CMP umul8.lo
-    LDA dsq+1 : SBC umul8.hi : BCC near
-    CPY reach : BNE root
-.far
-    RTS
-.near
+    LDA dsq+1 : SBC umul8.hi : BCS root
     \ damage = (reach - dist) * blast_power / reach, which is never more
     \ than blast_power, so fits in a byte. dist is Y - 1, and the carry is
     \ clear: reach + NOT(Y - 2) = reach - (Y - 2) - 1 = reach - dist.
     DEY : DEY : TYA : EOR #&FF : ADC reach
     LDX blast_power : JSR umul8
     LDA reach : JSR div16
-    LDA umul8.lo : JMP hurt
+    LDA umul8.lo : JSR hurt
+.next
+    LDX cur : INX : CPX num_players : BNE tank
+    RTS
 }
 
 \ Tank `cur` takes A points of damage (shield first). Pays the attacker.
