@@ -387,8 +387,7 @@ ASSERT LEN(landings) = SK_BURROW + 1 AND SK_CHARGE = SK_BURROW + 1
     LDX #4 : JSR negate_vel                     ; (A = vy's top byte)
     CMP #&80 : ROR A : STA shot_vy+2
     ROR shot_vy+1 : ROR shot_vy
-    LDA hit_y : SEC : SBC #3 : STA shot_y+2
-    LDA #0 : STA shot_y+3
+    DEC shot_y+2 : DEC shot_y+2 : DEC shot_y+2  ; hit_y - 3 (see scatter)
     JMP spawn_shell
 .bomblet
     LDA #7 : STA expl_r
@@ -429,6 +428,9 @@ ASSERT LEN(landings) = SK_BURROW + 1 AND SK_CHARGE = SK_BURROW + 1
 }
 
 \ A Funky Bomb throws six bomblets up and out from where it burst.
+\ A shell only lands on the screen, so its position is still (hit_x,
+\ hit_y) with both top bytes 0: shell_frame's checks, and those in walls
+\ for concrete, make sure of that. (Nothing else writes the shell.)
 .scatter
 {
     ZA_AUTO1 n
@@ -436,8 +438,7 @@ ASSERT LEN(landings) = SK_BURROW + 1 AND SK_CHARGE = SK_BURROW + 1
     LDA disc_cy : SEC : SBC #4 : STA shot_y+2
 .more
     LDA #SK_BOMBLET : STA shot_kind
-    LDA hit_x : STA shot_x+2
-    LDX #0 : STX shot_x+3 : STX shot_y+3 : STX shot_vx : STX shot_vy
+    LDX #0 : STX shot_vx : STX shot_vy
     \ vx: random, +-0.25 px/substep; vy: up, 0.25-0.75 rows/substep
     \ (rand preserves X)
     JSR rand : CMP #&80 : ROR A : STA shot_vx+1 ; /2, keeping sign
