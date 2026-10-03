@@ -382,8 +382,7 @@ ENDMACRO
 {
     ZA_AUTO1 i
     JSR cls
-    \ (26 items: the list starts on line 2 to fit them all)
-    LDA #1 : STA menu_sel
+    LDA #1 : STA menu_sel : STA shop_top
     LDX #0 : JSR at                             ; (A = 1: column 1)
     LDX cur : JSR print_name
     PRINT6 " GOES SHOPPING"
@@ -392,6 +391,7 @@ ENDMACRO
     PRINT_AT C_CYAN, 18, 1, "QTY  PRICE OWNED"
     PRINT_AT C_CYAN, 5, 30, "RETURN BUYS   SPACE TO FIGHT"
 .redraw
+    \ (shop_line leaves out the items scrolled out of sight)
     LDA #1 : STA i
 .all
     LDA i : JSR shop_line
@@ -411,6 +411,14 @@ ENDMACRO
     CPX #NITEMS-1 : BEQ key
     INC menu_sel
 .moved
+    \ The selection moves a line at a time, so if it leaves the window
+    \ the list scrolls one line after it.
+    LDA menu_sel : SEC : SBC shop_top : BCC scroll_up
+    CMP #SHOP_ROWS : BCC seen
+    INC shop_top : BNE redraw                   ; (always)
+.scroll_up
+    DEC shop_top : BNE redraw                   ; (always: it was 2 or more)
+.seen
     TXA : JSR shop_line                         ; un-highlight the old line
     LDA menu_sel : JSR shop_line
     JMP key
@@ -422,28 +430,35 @@ ENDMACRO
     RTS
 }
 
-\ Draw shop line A (an item): highlighted if selected, blue if it is out
-\ of reach.
+\ The shop lists SHOP_ROWS items at a time, from item shop_top, on lines 2
+\ onwards: the footer is on line 30.
+SHOP_ROWS = 28
+ZA_AUTO1 shop_top
+
+\ Draw shop line A (an item), if it is scrolled into view: highlighted if
+\ selected, red if it is out of reach.
 .shop_line
 {
-    ZA_AUTO1 item
+    ZA_AUTO1 item, line
     STA item
-    LDX #C_YELLOW : CMP menu_sel : BEQ colour
-    LDA item : JSR price : LDX cur : JSR can_afford
+    SEC : SBC shop_top : CMP #SHOP_ROWS : BCS hidden    ; (above: it wraps)
+    ADC #2 : STA line
+    LDX #C_YELLOW : LDA item : CMP menu_sel : BEQ colour
+    JSR price : LDX cur : JSR can_afford
     LDX #C_WHITE : BCS colour
     LDX #C_RED
 .colour
     TXA : JSR ink
-    LDX item : INX : LDA #1 : JSR at
-    ASSERT NITEMS <= 29                         ; (or the shop runs off the screen)
+    LDX line : LDA #1 : JSR at
     LDA item : JSR print_item_name
     LDA #4*18 : JSR pad_to
     \ (the wide fields leave the spaces between the columns)
     LDX item : LDA item_bundle,X : LDX #2 : JSR print_byte
     LDA item : JSR price : LDA #7 : JSR print_num
     LDA item : JSR inv_index : LDA inv,X : LDX #5 : JMP print_byte
+.hidden
+    RTS
 }
-
 \ num = the price of item A.
 .price
 {

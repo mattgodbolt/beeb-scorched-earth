@@ -65,9 +65,10 @@ I_HEAVY     = NWEAPONS + 4  ; shield's strength is its "radius"
 \ table of split counts that is nearly all zeros.
 I_MIRV        = 6
 I_DEATHS_HEAD = 7
-.item_bundle    EQUB ITEMS[.., 5]  ; (no room for these below &0E00 any more)
-\ Inventory: inv[inv_base[player] + item].
+\ Inventory: inv[inv_base[player] + item]. (No hole below &0E00 is big
+\ enough for it any more.)
 .inv_base       EQUB (0..MAXP-1) * NITEMS
+.inv            SKIP MAXP * NITEMS
 ASSERT ITEMS[I_MIRV][1] = SK_MIRV AND ITEMS[I_DEATHS_HEAD][1] = SK_MIRV
 FOR i = 0..NITEMS-1
     ASSERT ITEMS[i][6] = 0 OR i = I_MIRV OR i = I_DEATHS_HEAD

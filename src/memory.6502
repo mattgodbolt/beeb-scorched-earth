@@ -5,12 +5,11 @@
 \ this file existed.
 \ ***************************************************************************
 
-\ The bottom of the stack page. The stack itself never gets near it.
-\ A whole game's deepest stack was &01D1 (measured), so this guard leaves
-\ a 40-byte margin below it. Don't push it further without measuring again.
-SECTION StackLow, org = &0100, guard = &01A8
-.inv            SKIP MAXP * NITEMS      ; inventory: inv[inv_base[p] + item]
-ENDSECTION
+\ The bottom of the stack page holds constant item tables (lowdata.6502).
+\ The stack itself never gets near them: a whole game's deepest stack was
+\ &01D1 (measured), so this guard leaves a 40-byte margin below it. Don't
+\ push it further without measuring again.
+stack_low_guard = &01A8
 
 \ The top of zero page, carved off baron's allocator pool (ZA_POOL in
 \ main.6502 stops below zp_fixed). The busiest per-player arrays live here
@@ -76,8 +75,12 @@ SECTION Nmi, org = &0D01, guard = &0E00
 .nmi_end
 ENDSECTION
 
-\ Three more holes are filled with constant tables, carried in the SCORCH
+\ The inventory, inv[inv_base[p] + item], is in the code (weapons.6502):
+\ no hole down here is big enough for it any more.
+
+\ Four more holes are filled with constant tables, carried in the SCORCH
 \ file and copied into place once at start-up (lowdata.6502, boot.6502):
+\   &0100-stack_low_guard  the bottom of the stack page
 \   &0380-&03DF  the cassette filing system's workspace; no tape is ever used
 \   tables_end-&0CFF  the rest of the user-defined characters
 \   nmi_end-&0DEF  the rest of the extended vectors, which only ROMs use;

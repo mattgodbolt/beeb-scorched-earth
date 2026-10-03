@@ -13,9 +13,16 @@ SECTION LowTape, org = &0380, guard = &03E0
 .low_tape_end
 ENDSECTION
 
+.low_stack_payload
+SECTION LowStack, org = &0100, guard = stack_low_guard
+.item_price_lo  EQUB LO(ITEMS[.., 4])
+.item_price_hi  EQUB HI(ITEMS[.., 4])
+.item_bundle    EQUB ITEMS[.., 5]
+.low_stack_end
+ENDSECTION
+
 .low_udg_payload
 SECTION LowUdg, org = tables_end, guard = &0D00
-.item_kind      EQUB ITEMS[.., 1]
 .item_radius    EQUB ITEMS[.., 2]
 .item_power     EQUB ITEMS[.., 3]
 .low_udg_end
@@ -23,7 +30,6 @@ ENDSECTION
 
 .low_nmi_payload
 SECTION LowNmi, org = nmi_end, guard = &0DF0
-.item_price_lo  EQUB LO(ITEMS[.., 4])
-.item_price_hi  EQUB HI(ITEMS[.., 4])
+.item_kind      EQUB ITEMS[.., 1]
 .low_nmi_end
 ENDSECTION
