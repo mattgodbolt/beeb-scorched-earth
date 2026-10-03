@@ -93,12 +93,13 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
 .vel_done
     RTS
 
-\ shot_vx += X:A, a signed 16-bit amount.
+\ shot_vx += Y:A, a signed 16-bit amount. Preserves X (the mags rely on
+\ it).
 .add_vx
-    LDY #0 : CPX #&80 : BCC @+ : DEY : .@       ; Y = its sign
     CLC : ADC shot_vx : STA shot_vx
-    TXA : ADC shot_vx+1 : STA shot_vx+1
-    TYA : ADC shot_vx+2 : STA shot_vx+2
+    TYA : ADC shot_vx+1 : STA shot_vx+1
+    TYA : AND #&80 : BPL @+ : LDA #&FF : .@     ; its sign (carry kept)
+    ADC shot_vx+2 : STA shot_vx+2
     RTS
 
 \ 16x8 multiply: mul16.m * A -> mul16.r (24 bits). Preserves Y.
@@ -179,7 +180,7 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
 .next
     DEC sub : BNE substep
     \ Wind, once a frame.
-    LDA wind_acc : LDX wind_acc+1 : JSR add_vx
+    LDA wind_acc : LDY wind_acc+1 : JSR add_vx
     \ Mags push shells up as they pass over their tanks - not the firer's
     \ own, which would never get its shells away. Strong enough to turn
     \ a falling shell round and throw it back up; and sideways too, away
@@ -199,9 +200,7 @@ ZA_AUTO1 hit_x, hit_y, hit_tank, hit_kind
     CMP #MAG_H : BCS nomag
     LDA shot_vy+1 : SEC : SBC #HI(MAG_F) : STA shot_vy+1   ; (LO(MAG_F) = 0)
     BCS @+ : DEC shot_vy+2 : .@
-    TXA : PHA
-    TYA : TAX : LDA #0 : JSR add_vx             ; (LO(MAG_SIDE) = 0 too)
-    PLA : TAX
+    LDA #0 : JSR add_vx                         ; (LO(MAG_SIDE) = 0 too)
 .nomag
     INX : CPX num_players : BNE mag
     CLC

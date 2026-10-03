@@ -330,12 +330,12 @@ ZA_AUTO1 shell_i            ; the shell being worked on
     LSR A : STA k
     LDA #SK_MISSILE : STA shot_kind
 .back
-    LDA #LO(-SPREAD) : LDX #HI(-SPREAD) : JSR add_vx
+    LDA #LO(-SPREAD) : LDY #HI(-SPREAD) : JSR add_vx
     DEC k : BNE back
     \ the first warhead replaces the MIRV itself
     JSR save_shell
 .more
-    LDA #LO(SPREAD) : LDX #HI(SPREAD) : JSR add_vx
+    LDA #LO(SPREAD) : LDY #HI(SPREAD) : JSR add_vx
     JSR spawn_shell
     DEC n : BNE more
     RTS
