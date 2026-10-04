@@ -13,7 +13,7 @@ KEY_UP    = 139
 KEY_RET   = 13
 KEY_DEL   = 127
 
-ZA_AUTO1 num_rounds, round_no, menu_sel
+ZA_AUTO1 num_rounds, round_no, menu_sel, wind_change
 
 \ Black out the whole screen.
 .cls
@@ -178,6 +178,8 @@ ENDMACRO
     JSR draw_char                               ; A = 95, the end: a space
     LDA t : ADC #49 : JMP draw_char             ; (draw_char leaves carry clear)
 }
+.wind_names
+    PACKED " STEADY  " : PACKED " CHANGING"
 .type_names
     PACKED "PLAYER" : PACKED "MORON" : PACKED "SHOOTER"
     PACKED "TOSSER" : PACKED "SPOILER" : PACKED "CYBORG"
@@ -313,6 +315,9 @@ ENDMACRO
     LDA num_players : LDX #3 : JSR print_byte
     PRINT_AT C_YELLOW, 7, 10, "ROUNDS"
     LDA num_rounds : LDX #4 : JSR print_byte
+    PRINT_AT C_YELLOW, 7, 12, "WIND"
+    LDA wind_change : LDX #LO(wind_names) : LDY #HI(wind_names)
+    JSR print_packed_nth
     \ a line for each menu item: the marker, then for a player its name
     LDA #0 : STA i
 .item
@@ -321,14 +326,14 @@ ENDMACRO
     LDA #' ' : LDX i : CPX menu_sel : BNE @+ : LDA #'>' : .@
     JSR draw_char
     JSR draw_char                               ; (A = text_x: a space)
-    LDX i : DEX : DEX : BMI next                ; the two settings
+    LDX i : DEX : DEX : DEX : BMI next          ; the three settings
     CPX num_players : BCS blank
     JSR print_name
 .blank
     \ spaces rub out a longer name, or a player no longer in the game
     LDA #4*18 : JSR pad_to
 .next
-    INC i : LDA i : CMP #MAXP+2 : BNE item
+    INC i : LDA i : CMP #MAXP+3 : BNE item
     PRINT_AT C_WHITE, 4, 26, "UP/DOWN CHOOSE  LEFT/RIGHT CHANGE"
     PRINT_AT C_WHITE, 11, 28, "SPACE TO START"
 .key
@@ -338,9 +343,9 @@ ENDMACRO
     LDX menu_sel
     CMP #KEY_UP : BNE @+ : DEX : BMI key : BPL select : .@
     CMP #KEY_DOWN : BNE @+
-    \ items: 2 settings + players, so the last is num_players + 1
-    CPX num_players : BEQ down : BCS key
-.down
+    \ items: 3 settings + players, so the last is num_players + 2
+    LDA num_players : ADC #1 : STA i            ; (carry set by the CMP)
+    CPX i : BCS key
     INX : BNE select : .@                       ; (always)
     SEC : SBC #KEY_LEFT : CMP #2 : BCS key      ; 0 left, 1 right
     \ -1 or +1 to the selected setting, as i + carry: &FF + 0 or 0 + 1
@@ -350,10 +355,14 @@ ENDMACRO
     CMP #2 : BCC key : CMP #MAXP+1 : BCS key
     STA num_players : BCC again                 ; (always)
 .rounds
-    DEX : BPL type
+    DEX : BPL windy
     LDA num_rounds : ADC i
     BEQ key : CMP #100 : BCS key
     STA num_rounds : BCC again                  ; (always)
+.windy
+    DEX : BPL type
+    LDA wind_change : EOR #1 : STA wind_change
+    JMP again
 .type
     LDA tank_type,X : ADC i                     ; (X = the player now)
     BPL @+ : LDA #NTYPES-1 : .@

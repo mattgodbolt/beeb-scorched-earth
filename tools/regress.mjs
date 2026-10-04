@@ -23,7 +23,9 @@ if (shotDir) fs.mkdirSync(shotDir, { recursive: true });
 const b = await startBeeb({ disc, bootSecs: 5 });
 for (const k of Object.keys(b.syms)) delete b.syms[k];
 Object.assign(b.syms, loadSymbols(symf));
-await b.tap("DOWN"); await b.run(0.2); await b.tap("DOWN"); await b.run(0.2); await b.tap("DOWN"); await b.run(0.2);
+// Down past the three settings to player 2, and turn it from a Spoiler
+// into a human, so whoever is aiming fires the shot poked below.
+for (let i = 0; i < 4; i++) { await b.tap("DOWN"); await b.run(0.2); }
 for (let i = 0; i < 4; i++) { await b.tap("LEFT"); await b.run(0.2); }
 // The seed depends on boot timing, which depends on the code size: pin it
 // just after setup returns.

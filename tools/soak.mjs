@@ -12,10 +12,11 @@ const prefix = process.argv[4] ?? "shots/soak_";
 
 const b = await startBeeb({ disc: "build/scorch.ssd", bootSecs: 5 });
 const tap = async (k) => { await b.tap(k, 0.08); await b.run(0.15); };
-// Setup: 4 players, N rounds, player 1 a computer too.
+// Setup: 4 players, N rounds, changing wind, player 1 a computer too.
 await tap("RIGHT"); await tap("RIGHT");
 await tap("DOWN");
 for (let r = 10; r > rounds; r--) await tap("LEFT");
+await tap("DOWN"); await tap("RIGHT");         // wind: changing
 await tap("DOWN"); await tap("LEFT");          // player 1: HUMAN -> UNKNOWN (wraps)
 await b.shot(`${prefix}setup.png`);
 await tap("SPACE");

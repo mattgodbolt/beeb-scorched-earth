@@ -18,7 +18,7 @@ const all = [
 const want = process.argv.slice(2);
 const tests = want.length ? all.filter(t => want.includes(t[5])) : all;
 const b = await startBeeb({ disc: "build/scorch.ssd", bootSecs: 5 });
-await b.tap("DOWN"); await b.run(0.2); await b.tap("DOWN"); await b.run(0.2); await b.tap("DOWN"); await b.run(0.2);
+for (let i = 0; i < 4; i++) { await b.tap("DOWN"); await b.run(0.2); }      // past 3 settings
 for (let i = 0; i < 4; i++) { await b.tap("LEFT"); await b.run(0.2); }   // player 2 -> human too
 await b.tap("SPACE"); await b.run(4);
 const st = await b.saveState("round1");

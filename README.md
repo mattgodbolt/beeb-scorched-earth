@@ -28,7 +28,8 @@ then `*RUN SCORCH`: the game must be loaded in MODE 2 (see "How it works").
 ### Setup
 
 UP/DOWN choose a line, LEFT/RIGHT change it: the number of players
-(2-6), the number of rounds (1-99), and who each player is - a human, or
+(2-6), the number of rounds (1-99), whether the wind is steady or
+changes a little after every shot, and who each player is - a human, or
 one of the original's computer personalities:
 
 | | |

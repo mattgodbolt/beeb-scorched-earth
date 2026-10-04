@@ -14,6 +14,7 @@ MAX_WIND = 20
     LDA &FE45 : ORA #1 : STA seed+1
     LDA #2 : STA num_players
     LDA #10 : STA num_rounds
+    LDA #0 : STA wind_change
 .game
     JSR setup
     \ However long the setup took is as good a random seed as any.
@@ -85,6 +86,12 @@ MAX_WIND = 20
     \ Computers can stalemate - a tank behind a cliff in a headwind - so
     \ a round that drags on is called a draw.
     INC turns : LDA turns : CMP #MAX_TURNS : BCS stalemate
+    LDA wind_change : BEQ steady
+    JSR rand : AND #3 : TAY
+    LDA wind : CLC : ADC drifts,Y
+    CMP #16 : BEQ steady : CMP #&F0 : BEQ steady   ; (15 either way at most)
+    STA wind : JSR set_wind
+.steady
     LDX cur
 .next
     INX : CPX num_players : BNE turn
@@ -122,24 +129,34 @@ MAX_WIND = 20
 \ A fresh landscape, wind and walls, and everyone back at full health.
 .new_round
 {
-    ZA_AUTO1 twice
     JSR rand : AND #63 : ORA #31 : STA terrain_amp
     JSR gen_terrain
     JSR make_colours
     \ wind: the difference of two randoms, so a gale is rarer than a breeze
     JSR rand : AND #15 : STA wind
     JSR rand : AND #15 : EOR #&FF : SEC : ADC wind : STA wind
-    \ wind_acc = wind * 6 (per-frame velocity change, 1/65536 px/substep).
-    \ |wind| <= 15, so even x6 fits in a signed byte.
-    ASL A : STA twice : ASL A
-    LDX #0 : CLC : ADC twice : BPL @+ : DEX : .@
-    STA wind_acc : STX wind_acc+1
+    JSR set_wind
     JSR rand : AND #3 : STA wall_type
     JSR place_tanks
     JSR clear_status
     JSR draw_terrain
     JMP draw_tanks
 }
+
+\ wind_acc = wind * 6 (per-frame velocity change, 1/65536 px/substep).
+\ |wind| <= 15, so even x6 fits in a signed byte.
+.set_wind
+{
+    ZA_AUTO1 twice
+    LDA wind : ASL A : STA twice : ASL A
+    LDX #0 : CLC : ADC twice : BPL @+ : DEX : .@
+    STA wind_acc : STX wind_acc+1
+    RTS
+}
+\ How a changing wind drifts each turn: by 10 either way on the screen's
+\ scale, half the time.
+.drifts
+    EQUB &FF, 0, 0, 1
 
 \ Spread the tanks out, flatten a pad under each, full health.
 .place_tanks

@@ -66,6 +66,8 @@ change; drawing never goes through it.
   substep never moves more than a pixel. Gravity and wind are per-substep
   constants.
 - Wind is random per round, shown top right as an arrow and a number.
+  The setup screen's CHANGING wind drifts it by 10 (on screen) half the
+  turns, as the original's Changing Wind option did.
 - Walls, chosen per round: open (shots fly off), wraparound, rubber (bounce),
   concrete (explode).
 
