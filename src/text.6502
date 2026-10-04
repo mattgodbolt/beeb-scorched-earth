@@ -106,7 +106,7 @@ ZA_AUTO 3, num
     BNE show
     TYA : BEQ show              ; the units digit always shows
     CPY width : BCS skip        ; leading zeroes outside the field: nothing
-    LDA #32 : BNE out           ; inside it: a space
+    LDA #' ' : BNE out          ; inside it: a space
 .show
     TXA : ORA #48
 .out

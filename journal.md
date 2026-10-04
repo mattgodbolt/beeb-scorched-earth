@@ -415,3 +415,14 @@ meets a concrete wall high up bursts in the air, changing nothing an
 weapon that gives four different results (Baby Missile and Leapfrog at
 35 degrees and power 600, MIRV at 70/1000, Baby Roller at 40/1000). Only
 those 16 rows changed, and no two of the 74 rows now share a hash.
+
+## Character literals were there all along
+
+Baron's 4a4178c (Rich fixing waitingforvsync/baron#13, a stepped range
+whose limit equals its second element) also documented character
+literals, a "secret" feature until then. They work in the 0.4.2 we build
+with: `LDA #'>'` and even `CMP #';'`. CLAUDE.md had said there were none,
+so seven places wrote `#32` or `#62 ; >`; they are literals now and the
+disc is byte-identical. The disc built with baron main (which has the
+FUNCTION call-frame fix, #10/#11) is byte-identical too, so that bug
+never reached the merged source.

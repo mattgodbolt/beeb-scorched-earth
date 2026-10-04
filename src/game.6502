@@ -597,10 +597,10 @@ ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
     ZA_AUTO1 arrow
     LDA #4*18 : LDY #2 : JSR white_at
     LDX cur : LDA tank_angle,X
-    LDY #62                                     ; >
+    LDY #'>'
     CMP #91 : BCC @+
     EOR #&FF : ADC #180                         ; (carry set: 180 - A)
-    LDY #60                                     ; <
+    LDY #'<'
 .@  STY arrow                                   ; for after
     LDX #3 : JSR print_byte
     LDA arrow : JMP draw_char

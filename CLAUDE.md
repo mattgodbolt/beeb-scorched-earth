@@ -86,7 +86,8 @@ Never assume a change worked: `make`, run it, look.
   across recursion".
 - A label can't share a name with a `ZA_AUTO` in the same scope; a
   `ZA_AUTO` can't be called `a`.
-- No character literals: write `62 ; >`.
+- Character literals work (`LDA #'>'`, `';'` too), though only baron's docs since
+  4a4178c mention them. No escapes: a quote is `39`.
 - `ZA_INDEXEDBY` goes right after the indexed instruction, not at the end
   of a line holding two.
 - `JMP (vector)` into the OS needs `ZA_CANJUMP <an OS address>`; jumps

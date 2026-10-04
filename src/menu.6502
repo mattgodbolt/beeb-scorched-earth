@@ -144,7 +144,7 @@ ZA_AUTO1 tbits              ; what is left of the last one, then a 1
     ZA_AUTO1 to
     STA to
 .pad
-    LDA #32 : JSR draw_char                     ; -> A = text_x
+    LDA #' ' : JSR draw_char                    ; -> A = text_x
     CMP to : BCC pad
     RTS
 }
@@ -316,7 +316,7 @@ ENDMACRO
 .item
     LDA i : ASL A : ADC #8 : TAX : LDA #5 : JSR at
     JSR white
-    LDA #32 : LDX i : CPX menu_sel : BNE @+ : LDA #62 : .@
+    LDA #' ' : LDX i : CPX menu_sel : BNE @+ : LDA #'>' : .@
     JSR draw_char
     JSR draw_char                               ; (A = text_x: a space)
     LDX i : DEX : DEX : BMI next                ; the two settings
@@ -331,7 +331,7 @@ ENDMACRO
     PRINT_AT C_WHITE, 11, 28, "SPACE TO START"
 .key
     JSR get_key
-    CMP #32 : BEQ go
+    CMP #' ' : BEQ go
     CMP #KEY_RET : BEQ go
     LDX menu_sel
     CMP #KEY_UP : BNE @+ : DEX : BMI key : BPL select : .@
@@ -407,7 +407,7 @@ ENDMACRO
     LDX cur : JSR print_money
 .key
     JSR get_key
-    CMP #32 : BEQ done
+    CMP #' ' : BEQ done
     LDX menu_sel
     CMP #KEY_UP : BNE notup
     CPX #1 : BEQ key
@@ -598,5 +598,5 @@ ASSERT P% - ai_likes <= 16
 }
 \ Wait for SPACE.
 .wait_space
-    JSR get_key : CMP #32 : BNE wait_space
+    JSR get_key : CMP #' ' : BNE wait_space
     RTS
