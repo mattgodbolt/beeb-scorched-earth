@@ -9,7 +9,8 @@ and why.
 
 ### Screen: MODE 2
 
-160x256, 8 steady colours (16 logical), 20K at `&3000`.
+160x256, 8 steady colours (16 logical), 20K at `&3000`, cut to 29
+character rows (160x232 from `&3780`) so the code gets the 1.9K below.
 
 - Scorched Earth *is* colour: each player owns one, explosions cycle hot
   colours, the sky and dirt change per round. MODE 1's 320 pixels would aim
@@ -49,11 +50,15 @@ is repainting.
 
 | Range | Use |
 |---|---|
-| `&00-&8F` | zero page, handed to baron's allocator |
-| `&0400-&07FF` | runtime tables (screen row addresses, column offsets) |
-| `&0900-&0CFF` | runtime tables (sky/dirt rows, heightmap) |
-| `&0E00-&2FFF` | code and data, copied down from `&1900` after `*TAPE` |
-| `&3000-&7FFF` | screen |
+| `&00-&8F` | zero page: baron's allocator, then the busiest per-player arrays |
+| `&0400-&07FF` | screen row addresses and sky/dirt colours by row (BASIC's workspace) |
+| `&0900-&0CFF` | the heightmap, blast and falling-dirt tables, per-player money and inventory |
+| other holes below `&0E00` | constant tables, copied there at start-up |
+| `&0E00-&377F` | code and data, copied down from `&1900` after `*TAPE` |
+| `&3780-&7FFF` | screen |
+
+`src/memory.6502` lays all of it out in guarded sections; the build prints
+how many bytes are left below the screen.
 
 The OS stays resident for `OSWORD 7` sound, `OSBYTE 129` keys and the MODE
 change; drawing never goes through it.
@@ -75,8 +80,8 @@ change; drawing never goes through it.
 
 ### Players
 
-2-4 tanks, each human or computer, in red, yellow, magenta and cyan. Turn
-order rotates each round.
+2-6 tanks, each human or computer, in red, yellow, magenta, cyan, white
+and blue. Turn order rotates each round.
 
 Computer players aim by **firing invisible test shots** through the real
 ballistics code (as the Atari clone does), then add an error that depends on

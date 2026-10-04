@@ -9,7 +9,9 @@ assembly.
 That link hands [jsbeeb](https://github.com/mattgodbolt/jsbeeb) the disc
 image straight from this repository and boots it on a BBC B.
 
-![Title and setup](docs/img/title.png)
+![The title page](docs/img/intro.png)
+
+![Setup](docs/img/title.png)
 
 ![A Funky Bomb going off](docs/img/play.png)
 
@@ -31,7 +33,7 @@ game must be loaded in MODE 2 (see "How it works").
 
 UP/DOWN choose a line, LEFT/RIGHT change it: the number of players
 (2-6), the number of rounds (1-99), whether the wind is steady or
-changes a little after every shot, and who each player is - a human, or
+drifts between turns, and who each player is - a human, or
 one of the original's computer personalities:
 
 | | |
@@ -157,7 +159,7 @@ The game is developed against a headless BBC Micro, driven through the
 ```sh
 npm install     # the MCP client SDK
 make run        # boot it, screenshot to shots/run.png
-make test       # four computer players fight a 3-round game; fails on a crash
+make test       # four computer players fight a 3-round game; fails on a crash or a wrong winner
 ```
 
 `tools/play.mjs` runs scripted key presses with screenshots, screen dumps,

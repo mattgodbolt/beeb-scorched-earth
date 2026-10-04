@@ -457,3 +457,42 @@ a time, checking memory and committing after each:
   substep**: the flight code's one-pixel-a-substep promise holds.
 - **The turn loop's branches ran out of reach** when the drift and the
   erratic walls went in; they live in `between_turns` now.
+
+## A MODE 7 front end, for nothing
+
+`!BOOT` now chains `INTRO`, a BASIC program written inside the source
+with baron's `BASIC ... ENDBASIC` block (`src/intro.6502`): a teletext
+title over mosaic hills, three pages of instructions on I, then what
+`!BOOT` used to do, MODE 2 with the palette blacked out and `*RUN
+SCORCH`. SCORCH loads over it, so it costs the game no bytes; it only has
+to stay below &3000 with its variables (it ends near &2524).
+
+- **A line that fills all 40 columns wraps the cursor by itself**, so a
+  `PRINT` after it leaves a blank line: lines print with `;` and then
+  `IF POS PRINT`.
+- **Sixels are cheap to compute and slow to plot**: the hills went from
+  a visible crawl to instant by working out each column's height once
+  into `S%()` and building each cell as one `VDU` expression.
+- **The intro moved every tool's timing.** `startBeeb` presses SPACE
+  through it and waits 4s more; waiting exactly as long as the game
+  takes to start reading keys lost them, and the regress said so.
+
+## Every round went to player 1
+
+Retaking the README's screenshots, a tank that retreated won its round.
+`round_over` holds the winner in X across `wait_frames` ("keeps X", the
+comment said), but four minutes after "Shrink game.6502" wrote that,
+the next commit made `wait_frames` count in X, on the grounds that "its
+callers all reload X afterwards". From then on X came back 0: every
+round's point and $10,000 went to player 1, and a 50-turn stalemate was
+player 1's too. It counts in Y now, for no bytes.
+
+- **Neither test could see it.** The regress never finishes a round, and
+  the soak only watched for crashes. The soak now stops at `scores` and
+  checks the winner it is handed against the tanks left alive; on the old
+  disc it fails at the first stalemate.
+- **The playtest's 0 v 8 scoreboard** (docs/for-review.md) may be this
+  bug rather than the scoring rules.
+- **A register a routine keeps is a promise to its callers**: before
+  changing which registers a routine uses, grep its call sites for the
+  comments that rely on it.

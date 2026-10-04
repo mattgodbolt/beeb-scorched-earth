@@ -1,17 +1,18 @@
 \ ***************************************************************************
 \ SCORCHED EARTH for the BBC Micro - build file
 \
-\ !BOOT *RUNs SCORCH, which loads at &1900, selects *TAPE so the DFS lets go
-\ of its workspace, copies the game down to &0E00 and runs it.
+\ !BOOT chains INTRO (intro.6502), which ends by *RUNning SCORCH. That
+\ loads at &1900, selects *TAPE so the DFS lets go of its workspace,
+\ copies the game down to &0E00 and runs it.
 \ ***************************************************************************
 
 INCLUDE "defs.6502"
 INCLUDE "memory.6502"
 
-\ MODE 2 is selected by BASIC (intro.6502, which !BOOT chains) before
-\ the game is loaded: the game reaches past &3000 once it is copied down,
-\ so a MODE change after that would wipe the top of it. The palette is blacked out so the game file
-\ passing through screen memory on its way in is not seen.
+\ MODE 2 is selected by INTRO before the game is loaded: the game reaches
+\ past &3000 once it is copied down, so a MODE change after that would
+\ wipe the top of it. The palette is blacked out so the game file passing
+\ through screen memory on its way in is not seen.
 \ The build stamp comes from the Makefile (-D BUILD="date-sha").
 IF DEFINED(BUILD)
     build_stamp = BUILD
