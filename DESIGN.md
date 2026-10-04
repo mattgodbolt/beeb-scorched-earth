@@ -115,7 +115,8 @@ synchronous modes, teams.
 
 Money as in the original: shop prices and bundle sizes from the manual,
 earnings for damage, kills and survival, 5% interest. Baby Missiles are
-unlimited. A shop phase between rounds, one player at a time.
+unlimited. A shop phase between rounds, one player at a time; DELETE sells a
+whole bundle back for half its price.
 
 ### Flavour that earns its bytes
 

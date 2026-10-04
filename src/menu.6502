@@ -11,6 +11,7 @@ KEY_RIGHT = 137
 KEY_DOWN  = 138
 KEY_UP    = 139
 KEY_RET   = 13
+KEY_DEL   = 127
 
 ZA_AUTO1 num_rounds, round_no, menu_sel
 
@@ -396,7 +397,7 @@ ENDMACRO
     \ (a run of spaces costs more than another PRINT_AT)
     PRINT_AT C_CYAN, 1, 1, "ITEM"
     PRINT_AT C_CYAN, 18, 1, "QTY  PRICE OWNED"
-    PRINT_AT C_CYAN, 5, 30, "RETURN BUYS   SPACE TO FIGHT"
+    PRINT_AT C_CYAN, 1, 30, "RETURN BUYS  DELETE SELLS  SPACE FIGHTS"
 .redraw
     \ (shop_line leaves out the items scrolled out of sight)
     LDA #1 : STA i
@@ -433,8 +434,11 @@ ENDMACRO
     LDA menu_sel : JSR shop_line
     JMP key
 .notdown
+    LDY #0 : CMP #KEY_DEL : BEQ trade           ; Y = 0: sell
     CMP #KEY_RET : BNE key
-    LDA menu_sel : JSR buy : BCC key
+    INY                                         ; Y = 1: buy
+.trade
+    LDA menu_sel : JSR trade_item : BCC key
     BCS redraw                                  ; what's affordable changed
 .done
     RTS
@@ -498,6 +502,22 @@ ZA_AUTO1 shop_top
     RTS
 .no
     CLC
+    RTS
+}
+
+\ Player `cur` buys a bundle of item A (Y = 1) or sells one back for half
+\ its price (Y = 0). Carry set if they did. (Selling needs a whole bundle.)
+.trade_item
+{
+    CPY #0 : BNE buy
+    PHA : JSR inv_index : PLA : TAY
+    LDA inv,X : SEC : SBC item_bundle,Y : BCC no   ; (borrowed: carry clear)
+    STA inv,X
+    TYA : JSR price
+    LSR num+1 : ROR num
+    LDX cur : JSR money_add
+    SEC
+.no
     RTS
 }
 
