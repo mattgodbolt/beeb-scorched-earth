@@ -204,6 +204,6 @@ Claude Code; see `journal.md` for how it went.
 
 ## Licence
 
-The code is MIT licensed (see [LICENSE](LICENSE)). The talk lines in
+The code is MIT licensed (see [LICENSE](LICENSE)), except that the talk lines in
 `src/talk.6502`, and the game's name and design, are Wendell Hicken's
 and are not covered by it: this is an unofficial fan port.

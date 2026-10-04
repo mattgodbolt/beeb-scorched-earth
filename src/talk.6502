@@ -1,6 +1,7 @@
 \ ***************************************************************************
 \ Talking tanks. The lines are from the original's TALK1.CFG (said when
-\ firing) and TALK2.CFG (said when dying), cut to fit.
+\ firing) and TALK2.CFG (said when dying), cut to fit. They are Wendell
+\ Hicken's, not covered by this project's MIT licence (see README.md).
 \ Each is PACKED, so finding one means unpacking the ones before it.
 \ ***************************************************************************
 
