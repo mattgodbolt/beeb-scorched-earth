@@ -201,3 +201,9 @@ the running log of what was learned along the way.
 Scorched Earth is by Wendell Hicken. The weapon prices, the talk lines and
 the computer personalities are his. This is a fan port, written with
 Claude Code; see `journal.md` for how it went.
+
+## Licence
+
+The code is MIT licensed (see [LICENSE](LICENSE)). The talk lines in
+`src/talk.6502`, and the game's name and design, are Wendell Hicken's
+and are not covered by it: this is an unofficial fan port.
