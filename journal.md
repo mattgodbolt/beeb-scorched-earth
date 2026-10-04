@@ -403,3 +403,15 @@ plus screen-memory comparisons for anything the regress doesn't drive.
   offset in two files shared one call frame, so the second call saw the
   first's arguments. Another agent reduced it to four lines and filed it
   upstream with a fix (waitingforvsync/baron#10, #11).
+
+## The regress's wall shots never reached a wall
+
+Writing up the regress for kieranhj/beeb-port-kit turned up repeated
+hashes in its baseline: Baby Missile and Leapfrog gave the same result on
+all four wall types, and MIRV and Baby Roller matched on two each. From
+the firer's valley the shallow shots hit a hill first, and a shell that
+meets a concrete wall high up bursts in the air, changing nothing an
+"open" shot doesn't. A sweep of angle and power found a shot for each
+weapon that gives four different results (Baby Missile and Leapfrog at
+35 degrees and power 600, MIRV at 70/1000, Baby Roller at 40/1000). Only
+those 16 rows changed, and no two of the 74 rows now share a hash.

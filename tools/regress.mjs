@@ -45,9 +45,13 @@ const configs = [];
 // Weapon indices are weapons.6502's ITEMS: 0 Baby Missile, 4 Leapfrog,
 // 5 Funky Bomb, 6 MIRV, 12 Baby Roller, 14 Heavy Roller.
 for (let w = 0; w < b.syms.NWEAPONS; w++) configs.push([w, 0, 0x90, 1, null]);
+// Each wall shot was picked (by sweeping angle and power) to give four
+// different results on the four wall types: from the firer's valley,
+// shallower shots hit a hill first, and a shell that meets concrete high
+// up bursts in the air, leaving nothing an "open" shot doesn't.
 for (const wall of [0, 1, 2, 3]) {
-  configs.push([6, wall, 0xe8, 3, 30]); configs.push([4, wall, 0xe8, 3, 150]);
-  configs.push([0, wall, 0xe8, 3, 10]); configs.push([12, wall, 0x20, 3, 60]);
+  configs.push([6, wall, 0xe8, 3, 70]); configs.push([4, wall, 0x58, 2, 35]);
+  configs.push([0, wall, 0x58, 2, 35]); configs.push([12, wall, 0xe8, 3, 40]);
 }
 // Near misses on the firing tank itself, for damage at various distances.
 for (const w of [0, 1, 2, 3, 5, 14]) for (const a of [90, 84, 78, 70]) configs.push([w, 0, 0xc0, 0, a]);
