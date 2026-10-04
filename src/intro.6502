@@ -1,0 +1,119 @@
+\ ***************************************************************************
+\ INTRO: a BASIC program that !BOOT chains. A MODE 7 title, instructions if
+\ wanted, then what !BOOT used to do: MODE 2 with the palette blacked out
+\ (see main.6502) and *RUN SCORCH. The game loads over it, so it costs the
+\ game nothing; it only has to stay below &3000, where MODE 2's screen
+\ starts, with its variables.
+\
+\ Instruction lines are DATA: the first character is the teletext colour
+\ (1 red ... 7 white), "|" switches to white mid-line, "" is a blank line
+\ and "*" ends a page. Each line may hold 39 characters after its colour.
+\ ***************************************************************************
+
+SECTION Intro, org = &1900, load = &FFFF1900, exec = &FFFF8023, filename = "INTRO"
+BASIC
+   10REM SCORCHED EARTH: title, instructions, then the game
+   20ON ERROR GOTO 200
+   30*FX229,1
+   40MODE 7:VDU 23,1,0;0;0;0;
+   50PROCtitle
+   60REPEAT:K%=GET AND &DF:UNTIL K%=0 OR K%=ASC"I"
+   70IF K%=0 GOTO 200
+   80RESTORE
+   90REPEAT:READ T$:IF T$<>"END" PROCpage
+   95UNTIL T$="END"
+  200*FX229,0
+  210*FX15
+  220MODE 2
+  230FOR I%=0 TO 15:VDU 19,I%,0;0;:NEXT
+  240*RUN SCORCH
+ 1000DEF PROCtitle
+ 1010CLS
+ 1020PROCdbl(1,131,"SCORCHED  EARTH")
+ 1030PRINTTAB(0,4)CHR$134;SPC(7)"The Mother of All Games"
+ 1040REM Hills in mosaic graphics: 39 columns, 24 sixels high. S%() is
+ 1045REM where each column's ground starts; a cell's sixel rows are 1+2,
+ 1048REM 4+8 and 16+64 (TRUE is -1).
+ 1050DIM S%(39):FOR C%=1 TO 39:S%(C%)=14-5*SIN(C%/5)-3*SIN(C%/2.3+1):NEXT
+ 1060FOR R%=0 TO 7:PRINTTAB(0,8+R%)CHR$146;:Y%=3*R%
+ 1070FOR C%=1 TO 39:S%=S%(C%)
+ 1080VDU 160-3*(Y%>=S%)-12*(Y%+1>=S%)-80*(Y%+2>=S%)
+ 1090NEXT:NEXT
+ 1120PRINTTAB(0,18)CHR$135"A BBC Micro version of Wendell Hicken's";
+ 1130PRINTTAB(0,19)CHR$135"1991 artillery game for the PC."
+ 1140PRINTTAB(0,22)CHR$131"Press I for instructions"
+ 1150PRINTCHR$130"SPACE to play";
+ 1160ENDPROC
+ 1200DEF PROCdbl(R%,C%,T$)
+ 1210LOCAL I%:FOR I%=0 TO 1
+ 1220PRINTTAB(0,R%+I%)CHR$141;CHR$C%;SPC((37-LEN T$)DIV 2);T$
+ 1230NEXT:ENDPROC
+ 1300DEF PROCpage: REM title in T$
+ 1310CLS:PROCdbl(0,134,T$):PRINT
+ 1320REPEAT:READ L$:IF L$<>"*" PROCline
+ 1330UNTIL L$="*"
+ 1340PRINTTAB(0,24)CHR$130"SPACE: on";
+ 1350REPEAT:UNTIL GET=32
+ 1360ENDPROC
+ 1400DEF PROCline
+ 1410IF L$="" PRINT:ENDPROC
+ 1420I%=INSTR(L$,"|"):IF I% L$=LEFT$(L$,I%-1)+CHR$135+MID$(L$,I%+1)
+ 1430REM (a full 40 columns moves the cursor on by itself)
+ 1435PRINTCHR$(128+VAL LEFT$(L$,1));MID$(L$,2);:IF POS PRINT
+ 1440ENDPROC
+ 2000DATA "HOW TO PLAY"
+ 2010DATA "7Two to six tanks take turns to fire"
+ 2020DATA "7across the hills. The last tank left"
+ 2030DATA "7standing wins the round."
+ 2040DATA ""
+ 2050DATA "7Your greatest power is ten times your"
+ 2060DATA "7health: a battered tank can't fire far."
+ 2070DATA "7The wind (top right) blows shells."
+ 2080DATA ""
+ 2090DATA "7Damage, kills and wins earn money, and"
+ 2100DATA "7between rounds everyone goes shopping."
+ 2110DATA ""
+ 2120DATA "6SETTING UP"
+ 2130DATA "7UP/DOWN choose a line and LEFT/RIGHT"
+ 2140DATA "7change it: players, rounds, a steady or"
+ 2150DATA "7changing wind, and who each player is."
+ 2160DATA "7Computers can be a Moron, Shooter,"
+ 2170DATA "7Tosser, Spoiler, Cyborg, or Unknown:"
+ 2180DATA "7one of the others, kept secret."
+ 2190DATA "*"
+ 2200DATA "YOUR TURN"
+ 2210DATA "3LEFT RIGHT|turn the turret"
+ 2220DATA "3UP DOWN   |power (SHIFT: one at a time)"
+ 2230DATA "3TAB       |next weapon you have"
+ 2240DATA "3SPACE     |fire"
+ 2250DATA "3B         |use a Battery: +10 health"
+ 2260DATA "3S         |raise your best shield"
+ 2270DATA "3L         |a Lazy Boy aims for you"
+ 2280DATA "3Z X       |drive left/right, on Fuel"
+ 2290DATA "3R         |retreat: blow yourself up"
+ 2300DATA "3ESCAPE    |give up the game"
+ 2310DATA ""
+ 2320DATA "7A parachute opens by itself when a fall"
+ 2330DATA "7would hurt."
+ 2340DATA "*"
+ 2400DATA "SHOP AND WALLS"
+ 2410DATA "7Baby Missiles never run out; the rest"
+ 2420DATA "7you buy between rounds. Items you can't"
+ 2430DATA "7afford are red."
+ 2440DATA "3RETURN    |buys a bundle"
+ 2450DATA "3DELETE    |sells one back for half"
+ 2460DATA "3SPACE     |off to fight"
+ 2470DATA ""
+ 2480DATA "7Each round has its own walls:"
+ 2490DATA "7OPEN      |shells fly off and are lost"
+ 2500DATA "3WRAP      |the two sides join"
+ 2510DATA "1RUBBER    |shells bounce"
+ 2520DATA "7CONCRETE  |shells burst on the wall"
+ 2530DATA "5PADDED    |bounce back slowly"
+ 2540DATA "2SPRING    |bounce back twice as fast"
+ 2550DATA "7or, now and then, erratic: a new kind"
+ 2560DATA "7every turn."
+ 2570DATA "*"
+ 2580DATA "END"
+ENDBASIC
+ENDSECTION

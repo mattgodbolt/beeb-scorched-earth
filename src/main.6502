@@ -8,9 +8,9 @@
 INCLUDE "defs.6502"
 INCLUDE "memory.6502"
 
-\ MODE 2 is selected here, by BASIC, before the game is loaded: the game
-\ reaches past &3000 once it is copied down, so a MODE change after that
-\ would wipe the top of it. The palette is blacked out so the game file
+\ MODE 2 is selected by BASIC (intro.6502, which !BOOT chains) before
+\ the game is loaded: the game reaches past &3000 once it is copied down,
+\ so a MODE change after that would wipe the top of it. The palette is blacked out so the game file
 \ passing through screen memory on its way in is not seen.
 \ The build stamp comes from the Makefile (-D BUILD="date-sha").
 IF DEFINED(BUILD)
@@ -21,10 +21,10 @@ ENDIF
 
 SECTION Boot, filename = "!BOOT", exec = &FFFFFFFF
     EQUS "*| SCORCHED EARTH ", build_stamp, 13
-    EQUS "MODE 2", 13
-    EQUS "FOR I%=0 TO 15:VDU 19,I%,0;0;:NEXT", 13
-    EQUS "*RUN SCORCH", 13
+    EQUS "CHAIN ""INTRO""", 13
 ENDSECTION
+
+INCLUDE "intro.6502"
 
 SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filename = "SCORCH"
 .payload

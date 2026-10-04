@@ -36,7 +36,8 @@ Never assume a change worked: `make`, run it, look.
   `?sym:n` prints memory, `=sym:v1/v2` pokes, `@label` runs to a label.
   Symbols come from `build/symbols.json` (dotted scope paths work:
   `test_shot.miss`).
-- **The game needs ~5 seconds after boot** before the setup screen takes
+- **The game needs ~5 seconds after boot** (as `bootSecs`, which
+  `startBeeb` adds the intro's 4s to) before the setup screen takes
   keys, and the first round then takes a couple more seconds to draw.
   A key pressed too early does nothing, silently.
 - Poke `tank_weapon`, `tank_angle`, `tank_power_lo/hi` and press SPACE to
@@ -53,6 +54,11 @@ Never assume a change worked: `make`, run it, look.
 
 ## Memory
 
+- `!BOOT` chains `INTRO` (`src/intro.6502`, a baron `BASIC` block): the
+  MODE 7 title and instructions, then MODE 2 and `*RUN SCORCH`. It costs
+  the game nothing (SCORCH loads over it) but must stay below &3000 with
+  its variables. `startBeeb` presses SPACE through it unless given
+  `intro: true`; the setup screen takes keys from about 9s after boot.
 - `boot.6502` is run-once start-up code: it is carried in the file,
   copied to `skyrow`/`dirtrow` and run there, then overwritten. Nothing in
   it may be called after the first round starts.

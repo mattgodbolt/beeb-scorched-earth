@@ -28,7 +28,7 @@ export function loadSymbols(path = "build/symbols.json") {
     return out;
 }
 
-export async function startBeeb({ disc, model = "B-DFS1.2", bootSecs = 0 } = {}) {
+export async function startBeeb({ disc, model = "B-DFS1.2", bootSecs = 0, intro = false } = {}) {
     const transport = new StdioClientTransport(MCP);
     const client = new Client({ name: "scorch-harness", version: "1.0.0" });
     await client.connect(transport);
@@ -139,7 +139,16 @@ export async function startBeeb({ disc, model = "B-DFS1.2", bootSecs = 0 } = {})
     };
     if (disc) {
         await beeb.boot(disc);
-        if (bootSecs) await beeb.run(bootSecs);
+        // !BOOT chains INTRO, which waits for a key before it loads the
+        // game. Unless the intro is wanted, SPACE (held in the keyboard
+        // buffer until INTRO asks) skips it; the game then reaches its
+        // setup screen about 3s later than when !BOOT ran it directly: it
+        // first asks for a key 8.05s after boot (measured), and keys sent
+        // at that very moment are lost, so a second more than that.
+        if (bootSecs && !intro) {
+            await beeb.run(1); await beeb.tap("SPACE", 0.05);
+            await beeb.run(bootSecs + 3);
+        } else if (bootSecs) await beeb.run(bootSecs);
     }
     return beeb;
 }

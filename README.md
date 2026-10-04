@@ -22,8 +22,10 @@ in the shop between rounds on bigger and sillier weapons.
 
 [Play it in your browser](https://bbc.xania.org/?disc=https://raw.githubusercontent.com/mattgodbolt/beeb-scorched-earth/main/scorched-earth.ssd&autoboot),
 or put [`scorched-earth.ssd`](scorched-earth.ssd) in any BBC Micro emulator
-(or on a real disc) and SHIFT+BREAK. To start it by hand, type `MODE 2`
-then `*RUN SCORCH`: the game must be loaded in MODE 2 (see "How it works").
+(or on a real disc) and SHIFT+BREAK. A teletext title page comes up
+first: I for three pages of instructions, SPACE to play. To start it by
+hand, `CHAIN "INTRO"`, or skip it with `MODE 2` then `*RUN SCORCH`: the
+game must be loaded in MODE 2 (see "How it works").
 
 ### Setup
 
