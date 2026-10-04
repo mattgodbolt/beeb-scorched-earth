@@ -82,6 +82,7 @@ the personality:
 - Shooter: favours a flat shot and only gives power a rough search.
 - Tosser: large error, but corrects from where its last shot landed.
 - Spoiler / Cyborg: small error; Cyborg also picks its target.
+- Unknown: one of the others, picked at random each game and never shown.
 
 ### Weapons
 

@@ -58,6 +58,7 @@ SECTION Tables, org = &0900, guard = &0D00
 .fall_bot       SKIP MAX_R+3    ;   bottom row,
 .fall_dist      SKIP MAX_R+3    ;   and how far it has still to go
 .tank_type      SKIP MAXP       ; HUMAN or a computer personality
+.tank_plays     SKIP MAXP       ; the same, but an UNKNOWN's real one
 .tank_tries     SKIP MAXP       ; shots a tosser has had
 .tank_money     SKIP MAXP*3     ; 24-bit, low bytes first, by player
 .tank_score     SKIP MAXP

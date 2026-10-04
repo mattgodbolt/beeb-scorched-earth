@@ -14,7 +14,8 @@ SHOOTER = 2                 ; one steep angle, rough power
 TOSSER  = 3                 ; poor aim that improves with every shot
 SPOILER = 4                 ; good aim, three angles
 CYBORG  = 5                 ; better aim, and picks on the weakest tank
-NTYPES  = 6
+UNKNOWN = 6                 ; one of the above, picked each game, kept hidden
+NTYPES  = 7
 
 
 \ Power wobble by type, and the angles each one tries (degrees above the
@@ -23,8 +24,9 @@ NTYPES  = 6
 \ without it two Spoilers either side of one could stalemate for ever.
 \ The first three start at SHOOTER: humans and morons don't aim.
 ASSERT SHOOTER = 2
-\ The last column is a Lazy Boy's: a Spoiler that doesn't spoil.
-LAZY = NTYPES
+\ The last column is a Lazy Boy's: a Spoiler that doesn't spoil. It
+\ shares UNKNOWN's number, which never reaches the aiming (tank_plays).
+LAZY = UNKNOWN
 \ (ai_wobble, ai_first and ai_count are in lowdata.6502.)
 .ai_angles  EQUB 70, 50, 45, 65, 80, 30
 
@@ -41,7 +43,7 @@ ZA_AUTO2 ai_power
     \ Say whose turn it is before the thinking starts: a Spoiler can spend
     \ a couple of seconds on its test shots.
     JSR draw_status
-    LDX cur : LDA tank_type,X : STA type
+    LDX cur : LDA tank_plays,X : STA type
     \ Raise a shield if it has one, and use batteries when weak.
     JSR raise_shield
 .shielded
@@ -141,7 +143,7 @@ lazy_boy = ai_turn.lazy
 .loop
     CPX cur : BEQ next
     LDA tank_alive,X : BEQ next
-    LDY cur : LDA tank_type,Y : CMP #CYBORG : BNE near
+    LDY cur : LDA tank_plays,Y : CMP #CYBORG : BNE near
     LDA tank_health,X : BCS @+                  ; (always: CMP was equal)
 .near
     JSR x_dist

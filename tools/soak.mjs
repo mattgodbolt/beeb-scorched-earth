@@ -16,7 +16,7 @@ const tap = async (k) => { await b.tap(k, 0.08); await b.run(0.15); };
 await tap("RIGHT"); await tap("RIGHT");
 await tap("DOWN");
 for (let r = 10; r > rounds; r--) await tap("LEFT");
-await tap("DOWN"); await tap("LEFT");          // player 1: HUMAN -> CYBORG (wraps)
+await tap("DOWN"); await tap("LEFT");          // player 1: HUMAN -> UNKNOWN (wraps)
 await b.shot(`${prefix}setup.png`);
 await tap("SPACE");
 await b.breakpoint(0xDC27);

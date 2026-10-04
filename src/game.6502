@@ -34,6 +34,14 @@ MAX_WIND = 20
 .fresh
     STA tank_weapon,X : DEX : BPL fresh
     STA round_no
+    \ An Unknown plays as one of the others, picked now and never shown.
+    LDX #MAXP-1
+.hide
+    LDA tank_type,X : CMP #UNKNOWN : BNE @+
+.pick
+    JSR rand : AND #7 : CMP #MORON : BCC pick : CMP #UNKNOWN : BCS pick
+.@  STA tank_plays,X
+    DEX : BPL hide
 .round
     INC round_no
     JSR new_round
