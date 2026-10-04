@@ -33,13 +33,14 @@ ZA_AUTO1 vsyncs
     RTS
 }
 
-\ Wait A frames. Returns X = 0.
+\ Wait A frames. Returns Y = 0, and keeps X: round_over holds the winner
+\ in it across the wait (counting in X once gave every round to player 1).
 .wait_frames
 {
-    TAX
+    TAY
 .loop
     JSR wait_vsync
-    DEX : BNE loop
+    DEY : BNE loop
     RTS
 }
 

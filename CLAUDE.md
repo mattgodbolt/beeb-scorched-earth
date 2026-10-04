@@ -10,7 +10,7 @@ jsbeeb through its MCP server. `DESIGN.md` is what the game is meant to be,
 ```sh
 make            # assemble build/scorch.ssd (+ build/symbols.json, build/listing.txt)
 make run        # boot it, screenshot to shots/run.png
-make test       # four computer players fight a 3-round game; fails on any BRK
+make test       # four computer players fight a 3-round game; fails on a BRK or a wrong winner
 make ship       # rebuild from a clean tree and copy to scorched-earth.ssd
 node tools/regress.mjs build/regress.txt && diff tools/regress.baseline.txt build/regress.txt
 ```
@@ -111,6 +111,9 @@ Never assume a change worked: `make`, run it, look.
   `zp,Y` store exists) or count upwards from the label itself.
 - `draw_char` (and most routines) trash A: `JSR draw_char : JSR draw_char`
   does not print a character twice.
+- A call-site comment like `(keeps X)` is a promise the callee must keep:
+  grep for them before changing which registers a routine uses.
+  `wait_frames` once broke one and gave every round to player 1.
 
 ## Conventions
 
