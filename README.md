@@ -70,6 +70,10 @@ round's walls:
 | WRAP | the left and right edges join |
 | RUBBER | shots bounce |
 | CONCRETE | shots burst on the walls |
+| PADDED | shots bounce back at half the speed |
+| SPRING | shots bounce back at twice the speed |
+
+A round in four has erratic walls: a new kind every turn.
 
 ![Talking tanks](docs/img/talk.png)
 

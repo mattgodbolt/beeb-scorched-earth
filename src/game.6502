@@ -5,6 +5,7 @@
 ZA_AUTO1 num_players, turns
 MAX_TURNS = 50
 ZA_AUTO1 wind               ; signed, -MAX_WIND..MAX_WIND (shown as x10)
+ZA_AUTO1 erratic            ; bit 7: the walls change every turn
 MAX_WIND = 20
 
 .main
@@ -86,12 +87,7 @@ MAX_WIND = 20
     \ Computers can stalemate - a tank behind a cliff in a headwind - so
     \ a round that drags on is called a draw.
     INC turns : LDA turns : CMP #MAX_TURNS : BCS stalemate
-    LDA wind_change : BEQ steady
-    JSR rand : AND #3 : TAY
-    LDA wind : CLC : ADC drifts,Y
-    CMP #16 : BEQ steady : CMP #&F0 : BEQ steady   ; (15 either way at most)
-    STA wind : JSR set_wind
-.steady
+    JSR between_turns
     LDX cur
 .next
     INX : CPX num_players : BNE turn
@@ -136,7 +132,11 @@ MAX_WIND = 20
     JSR rand : AND #15 : STA wind
     JSR rand : AND #15 : EOR #&FF : SEC : ADC wind : STA wind
     JSR set_wind
-    JSR rand : AND #3 : STA wall_type
+    \ The walls: one kind for the round, or (6 and 7, a round in four)
+    \ erratic, a new kind each turn.
+    JSR rand : AND #7 : CMP #NWALLS : ROR erratic
+    BCC @+ : AND #3 : .@                        ; (erratic: start on 2 or 3)
+    STA wall_type
     JSR place_tanks
     JSR clear_status
     JSR draw_terrain
@@ -151,6 +151,22 @@ MAX_WIND = 20
     LDA wind : ASL A : STA twice : ASL A
     LDX #0 : CLC : ADC twice : BPL @+ : DEX : .@
     STA wind_acc : STX wind_acc+1
+    RTS
+}
+\ A changing wind drifts, and erratic walls change, between turns.
+.between_turns
+{
+    LDA wind_change : BEQ steady
+    JSR rand : AND #3 : TAY
+    LDA wind : CLC : ADC drifts,Y
+    CMP #16 : BEQ steady : CMP #&F0 : BEQ steady   ; (15 either way at most)
+    STA wind : JSR set_wind
+.steady
+    BIT erratic : BPL settled
+.reroll
+    JSR rand : AND #7 : CMP #NWALLS : BCS reroll
+    STA wall_type
+.settled
     RTS
 }
 \ How a changing wind drifts each turn: by 10 either way on the screen's
@@ -606,8 +622,9 @@ ASSERT LEN(at_tanks) = SK_LASER - SK_CHARGE + 1
 
 .wall_names
     PACKED "    OPEN" : PACKED "    WRAP" : PACKED "  RUBBER" : PACKED "CONCRETE"
+    PACKED "  PADDED" : PACKED "  SPRING"
 .wall_colours
-    EQUB C_WHITE, C_YELLOW, C_RED, C_WHITE
+    EQUB C_WHITE, C_YELLOW, C_RED, C_WHITE, C_MAGENTA, C_GREEN
 
 \ The selected weapon and how many are left.
 .draw_weapon

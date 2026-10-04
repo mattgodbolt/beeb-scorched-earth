@@ -20,6 +20,9 @@ WALL_NONE     = 0           ; shots leave the screen and are lost
 WALL_WRAP     = 1
 WALL_RUBBER   = 2
 WALL_CONCRETE = 3
+WALL_PADDED   = 4           ; bounce at half the speed
+WALL_SPRING   = 5           ; bounce at twice the speed
+NWALLS        = 6
 OFFSCREEN     = 64          ; how far off either side a shot is still tracked
 
 \ Results of a flight
@@ -278,9 +281,23 @@ ASSERT LO(MAG_F) = 0 AND LO(MAG_SIDE) = 0
     DEX : BEQ wrap
     \ Rubber and concrete both put it back on the edge column.
     STY shot_x+2 : LDA #0 : STA shot_x+3
-    DEX : BNE concrete
+    DEX : BNE not_rubber
+.bounce
     TAX : JSR negate_vel                        ; bounce (X = 0: vx)
+    \ (A = vx's integer byte: its sign)
+    LDX wall_type : CPX #WALL_PADDED : BCC bounced : BNE spring
+    CMP #&80 : ROR shot_vx+2 : ROR shot_vx+1 : ROR shot_vx
+.bounced
     CLC : RTS
+.spring
+    \ Doubled only below half a pixel a substep (the fastest launch is
+    \ 0.66 rows, halved sideways), so a substep still moves a pixel at
+    \ most: then bit 7 of the fraction matches the sign.
+    LDA shot_vx+1 : EOR shot_vx+2 : BMI bounced
+    ASL shot_vx : ROL shot_vx+1 : ROL shot_vx+2
+    CLC : RTS
+.not_rubber
+    DEX : BNE bounce                            ; padded or spring
 .concrete
     \ Bursts on the wall - unless it went over the top of the screen.
     LDA shot_y+3 : BNE lost

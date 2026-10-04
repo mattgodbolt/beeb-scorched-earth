@@ -69,7 +69,9 @@ change; drawing never goes through it.
   The setup screen's CHANGING wind drifts it by 10 (on screen) half the
   turns, as the original's Changing Wind option did.
 - Walls, chosen per round: open (shots fly off), wraparound, rubber (bounce),
-  concrete (explode).
+  concrete (explode), padded (bounce at half speed), spring (bounce at
+  double speed, short of a pixel a substep); or, a round in four,
+  erratic: a new kind each turn.
 
 ### Players
 
