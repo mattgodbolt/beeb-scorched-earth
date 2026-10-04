@@ -57,7 +57,8 @@ MAX_WIND = 20
     STX attacker
     LDA tank_type,X : BNE computer
     JSR aim : BCS game                          ; ESCAPE: give up the game
-    BCC shoot                                   ; (always)
+    BVC shoot
+    JSR kill_dead : JMP watching                ; R: it retreated
 .computer
     JSR ai_turn
 .shoot
@@ -207,7 +208,8 @@ MAX_WIND = 20
 \ ---------------------------------------------------------------------------
 \ Aiming. Left/right turn the turret, up/down change power (SHIFT for
 \ fine steps), SPACE or RETURN fires. Returns carry set if ESCAPE was
-\ pressed instead.
+\ pressed instead, or V set if R was: the tank retreats, which as in the
+\ original means it blows itself up.
 
 .aim
 {
@@ -235,16 +237,21 @@ MAX_WIND = 20
     RTS                                         ; not a return: a jump
     ZA_CANJUMP go
 .keys
-    EQUB K_RETURN, K_SPACE, K_S, K_B, K_L, K_Z, K_X, K_ESCAPE, K_TAB
+    EQUB K_RETURN, K_SPACE, K_R, K_S, K_B, K_L, K_Z, K_X, K_ESCAPE, K_TAB
     EQUB K_DOWN, K_UP, K_RIGHT, K_LEFT
 NKEYS = P% - keys
-go = {fire, fire, shield, battery, lazy, west, east, quit, tab, down, up, right, left}
+go = {fire, fire, retreat, shield, battery, lazy, west, east, quit, tab, down, up, right, left}
 .go_lo
     EQUB LO(go - 1)
 .go_hi
     EQUB HI(go - 1)
-.fire
+.retreat
+    LDX cur : LDA #0 : STA tank_health,X        ; (kill_dead does the rest)
+    BIT quit+1                                  ; (an RTS, &60: sets V)
     CLC
+    RTS
+.fire
+    CLC : CLV
     RTS
 .quit
     SEC                                         ; ESCAPE: give up the game

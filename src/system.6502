@@ -65,6 +65,7 @@ K_TAB    = &9F
 K_ESCAPE = &8F
 K_B      = &9B
 K_S      = &AE
+K_R      = &CC
 K_L      = &A9
 K_Z      = &9E
 K_X      = &BD

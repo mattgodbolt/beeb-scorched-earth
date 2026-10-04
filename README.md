@@ -38,6 +38,7 @@ one of the original's computer personalities:
 | **Tosser** | wild at first, but improves with every shot |
 | **Spoiler** | tries four angles, including a high lob, and aims well |
 | **Cyborg** | aims better still, and picks on the weakest tank |
+| **Unknown** | one of the above, picked at random each game and kept secret |
 
 SPACE starts.
 
@@ -53,6 +54,7 @@ SPACE starts.
 | S | raise your strongest shield |
 | L | use a Lazy Boy: it aims for you |
 | Z / X | drive left / right, a unit of Fuel a pixel |
+| R | retreat: as in the original, your tank blows itself up |
 | ESCAPE | give up the game |
 
 As in the original, **your maximum power is ten times your health**: a
@@ -77,6 +79,7 @@ two pages: move off the bottom of the first to see the rest. Damage earns
 $50 a point, a kill $2,500, winning a round $10,000; everyone is paid
 $2,000 a round, and money in the bank earns about 5%. Prices and bundle
 sizes are the original's. Items you can't afford are shown in red.
+RETURN buys a bundle; DELETE sells one back for half what it cost.
 
 | Weapon | |
 |---|---|
