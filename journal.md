@@ -426,3 +426,34 @@ so seven places wrote `#32` or `#62 ; >`; they are literals now and the
 disc is byte-identical. The disc built with baron main (which has the
 FUNCTION call-frame fix, #10/#11) is byte-identical too, so that bug
 never reached the merged source.
+
+## The original's small things: 2112 -> 1817 bytes free
+
+Matt asked what the port was missing and to add the easy parts one at
+a time, checking memory and committing after each:
+
+| | bytes |
+|---|---|
+| Unknown computer player (a hidden pick of the other five, per game; `tank_plays` holds the real one, 6 bytes in the UDG hole) | 35 |
+| Selling back in the shop: DELETE, a whole bundle for half price | 51 |
+| Retreat: R blows your own tank up, as in the original | 20 |
+| Changing wind, a setup option: drifts by 10 half the turns | 93 |
+| Padded and spring walls, and erratic rounds (a new kind each turn) | 71 |
+
+- **Skies were not easy after all.** A sky row is one colour byte
+  across the whole screen, so stars and clouds can't be drawn, and every
+  colour but black and green is a tank's (blue is player 6's), so a
+  sunset would hide tanks.
+- **Measure free bytes against the same build stamp.** The stamp is
+  in the code (the title screen), so a test build with `BUILD=X` reads 25
+  bytes roomier than a real one: the Unknown player's commit says 60
+  bytes; it was 35.
+- **A new setup line moved the players down**, and the regress
+  quietly stopped testing anything: its three DOWNs landed on player 1
+  instead of player 2, the Spoiler stayed a computer, and every poked
+  shot hashed the same. It presses DOWN four times now (gallery.mjs
+  too). Anything that drives a menu by key counts breaks this way.
+- **Spring walls double the sideways speed only below half a pixel a
+  substep**: the flight code's one-pixel-a-substep promise holds.
+- **The turn loop's branches ran out of reach** when the drift and the
+  erratic walls went in; they live in `between_turns` now.
