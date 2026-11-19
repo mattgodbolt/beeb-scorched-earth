@@ -22,8 +22,17 @@ export function loadSymbols(path = "build/symbols.json") {
     if (!existsSync(path)) return {};
     const all = JSON.parse(readFileSync(path, "utf8"));
     const out = {};
-    for (const file of Object.values(all)) {
-        for (const [k, v] of Object.entries(file)) if (!k.includes("@")) out[k] = v;
+    // baron 0.6 (format 2): per assembly, per section, symbols grouped by kind.
+    // Only the kinds that are addresses or numbers; anonymous (@) names are
+    // private to their scope.
+    for (const asm of all.assemblies) {
+        for (const sec of asm.sections) {
+            for (const kind of ["labels", "assignments", "za_autos"]) {
+                for (const [k, v] of Object.entries(sec[kind] ?? {})) {
+                    if (!k.includes("@")) out[k] = v.value;
+                }
+            }
+        }
     }
     return out;
 }

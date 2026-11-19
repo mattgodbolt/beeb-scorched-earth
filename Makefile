@@ -17,7 +17,9 @@ BUILD   := $(shell date -u +%Y-%m-%d.%H%M)-$(shell git rev-parse --short HEAD 2>
 all: $(TARGET)
 
 # The symbol dump is how the test tools find the game's variables.
-$(TARGET): $(SOURCES) | build
+# The assembler is an input too: $(wildcard) is empty when BARON is a bare
+# name found on the PATH, so only a path to a real file adds a dependency.
+$(TARGET): $(SOURCES) $(wildcard $(BARON)) | build
 	$(BARON) -D 'BUILD="$(BUILD)"' -o $(TARGET) --title SCORCHED --opt 3 --symbols $(SYMBOLS) -v -log0 build/listing.txt src/main.6502
 	@grep -E '^code' build/listing.txt || true
 
